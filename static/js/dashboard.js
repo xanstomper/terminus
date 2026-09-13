@@ -1,0 +1,2948 @@
+// Terminus - The endpoint you can reach anywhere
+// Universal Agent Control Plane, Diagnostics & Persistent Multi-Terminal
+
+document.addEventListener("DOMContentLoaded", () => {
+  // --------------------------------------------------
+  // Per-Tab Isolated Terminal Architecture
+  // --------------------------------------------------
+  // Map of sessionId -> {
+  //   id, title, cwd, agentId,
+  //   container, term, fitAddon, socket,
+  //   isConnecting, reconnectTimer, heartbeatTimer,
+  //   lastPongTime, receivedBytes, lastCols, lastRows,
+  //   isDisposed, status, statusLabel
+  // }
+  const terminalTabs = new Map();
+
+  let ctrlLatched = false;
+  let currentSessionId = localStorage.getItem("terminus_active_session") || "term-main";
+  let activeSessions = [
+    { id: currentSessionId, title: "Shell" }
+  ];
+  let cmdHistory = JSON.parse(localStorage.getItem("terminus_cmd_history") || "[]");
+  let cmdHistoryIndex = -1;
+
+  // Cached data
+  let cachedProjects = [];
+  let currentProjectSort = "recent";
+  let currentProjectSearch = "";
+  let cachedAgents = [];
+  let currentAgentSearch = "";
+
+  // DOM Elements
+  const terminalViewport = document.getElementById("terminal-viewport");
+  const tabsContainer = document.getElementById("tabs-container");
+  const indicatorDot = document.getElementById("indicator-dot");
+  const indicatorText = document.getElementById("indicator-text");
+  const commandField = document.getElementById("command-field");
+  const commandForm = document.getElementById("command-form");
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // Nav Views
+  const navBtns = document.querySelectorAll("[data-view-target]");
+  const viewPanels = document.querySelectorAll(".view-panel");
+
+  // Telemetry DOM
+  const telemCpu = document.getElementById("telem-cpu");
+  const telemMem = document.getElementById("telem-mem");
+  const telemDisk = document.getElementById("telem-disk");
+  const hostPill = document.getElementById("host-pill");
+  const hostPillText = document.getElementById("host-pill-text");
+
+  // Toast Container
+  const toastContainer = document.getElementById("toast-container");
+
+  function showToast(message) {
+    if (!toastContainer) return;
+    const t = document.createElement("div");
+    t.className = "toast";
+    t.textContent = message;
+    toastContainer.appendChild(t);
+    setTimeout(() => {
+      t.style.opacity = "0";
+      t.style.transition = "opacity 0.2s";
+      setTimeout(() => t.remove(), 200);
+    }, 2400);
+  }
+
+  // --------------------------------------------------
+  // Helper: Active Tab Lookup
+  // --------------------------------------------------
+  function getActiveTab() {
+    return terminalTabs.get(currentSessionId) || null;
+  }
+
+  // --------------------------------------------------
+  // Per-Tab Factory & Lifecycle
+  // --------------------------------------------------
+  function getOrCreateTerminalTab(sessionId, title = "Shell", cwd = null, agentId = null) {
+    if (terminalTabs.has(sessionId)) {
+      const existing = terminalTabs.get(sessionId);
+      if (title && !existing.title) existing.title = title;
+      if (cwd && !existing.cwd) existing.cwd = cwd;
+      if (agentId && !existing.agentId) existing.agentId = agentId;
+      return existing;
+    }
+
+    // 1. Create dedicated DOM container inside viewport
+    const container = document.createElement("div");
+    container.className = "terminal-tab-instance";
+    container.id = `tab-inst-${sessionId}`;
+    container.style.display = (sessionId === currentSessionId) ? "block" : "none";
+    terminalViewport.appendChild(container);
+
+    // 2. Configure xterm instance
+    // Note: lineHeight: 1.0 and letterSpacing: 0 fix ASCII art gaps & broken box-drawing borders!
+    const isMobile = window.innerWidth < 768;
+    const term = new Terminal({
+      cursorBlink: true,
+      cursorStyle: "bar",
+      cursorWidth: 2,
+      fontSize: isMobile ? 12 : 13,
+      lineHeight: 1.08,
+      letterSpacing: 0,
+      fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", "SF Mono", Menlo, Monaco, Consolas, monospace',
+      theme: {
+        background: "#09090b",
+        foreground: "#f4f4f6",
+        cursor: "#f4f4f6",
+        cursorAccent: "#09090b",
+        selectionBackground: "rgba(255, 255, 255, 0.16)",
+        black: "#18181b",
+        red: "#ef4444",
+        green: "#10b981",
+        yellow: "#f59e0b",
+        blue: "#3b82f6",
+        magenta: "#a855f7",
+        cyan: "#06b6d4",
+        white: "#f4f4f6",
+        brightBlack: "#52525b",
+        brightRed: "#f87171",
+        brightGreen: "#34d399",
+        brightYellow: "#fbbf24",
+        brightBlue: "#60a5fa",
+        brightMagenta: "#c084fc",
+        brightCyan: "#22d3ee",
+        brightWhite: "#ffffff"
+      },
+      allowTransparency: true,
+      scrollback: 10000,
+      tabStopWidth: 4,
+      convertEol: true,
+      customGlyphs: true,
+      smoothScrollDuration: 0,
+      fastScrollModifier: "alt",
+      fastScrollSensitivity: 5
+    });
+
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+
+    if (typeof WebLinksAddon !== "undefined" && WebLinksAddon.WebLinksAddon) {
+      term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    }
+
+    term.open(container);
+
+    // 3. Tab State Structure
+    const tabObj = {
+      id: sessionId,
+      title: title,
+      cwd: cwd,
+      agentId: agentId,
+      container: container,
+      term: term,
+      fitAddon: fitAddon,
+      socket: null,
+      isConnecting: false,
+      reconnectTimer: null,
+      heartbeatTimer: null,
+      lastPongTime: Date.now(),
+      receivedBytes: 0,
+      lastCols: 0,
+      lastRows: 0,
+      isDisposed: false,
+      status: "reconnecting",
+      statusLabel: "Connecting..."
+    };
+
+    terminalTabs.set(sessionId, tabObj);
+
+    // Terminal data event -> sends input to this specific tab's socket
+    term.onData((data) => {
+      sendTerminalInput(data, tabObj);
+    });
+
+    // Touch and click within container ensures helper textarea focus
+    container.addEventListener("click", () => ensureKeyboardFocus(tabObj));
+    container.addEventListener("touchend", () => ensureKeyboardFocus(tabObj));
+
+    // Connect this tab's dedicated WebSocket
+    connectTabWebSocket(tabObj);
+
+    return tabObj;
+  }
+
+  // --------------------------------------------------
+  // Dedicated Per-Tab WebSocket Connection & Sync
+  // --------------------------------------------------
+  function connectTabWebSocket(tab) {
+    if (tab.isDisposed || tab.isConnecting) return;
+    if (tab.socket && (tab.socket.readyState === WebSocket.OPEN || tab.socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    tab.isConnecting = true;
+    updateTabStatus(tab, "reconnecting", tab.receivedBytes > 0 ? "Resuming..." : "Connecting...");
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/terminal/${encodeURIComponent(tab.id)}`;
+
+    let ws = null;
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+      tab.socket = ws;
+    } catch (err) {
+      handleTabDisconnect(tab);
+      return;
+    }
+
+    ws.onopen = () => {
+      if (tab.isDisposed) {
+        try { ws.close(); } catch (e) {}
+        return;
+      }
+      tab.isConnecting = false;
+      tab.lastPongTime = Date.now();
+      updateTabStatus(tab, "online", "Connected");
+
+      // Only request stream synchronization if reconnecting after having received bytes
+      if (tab.receivedBytes > 0) {
+        try {
+          ws.send(JSON.stringify({
+            type: "sync",
+            offset: tab.receivedBytes
+          }));
+        } catch (e) {}
+      }
+
+      if (tab.id === currentSessionId) {
+        safeFitTab(tab);
+        ensureKeyboardFocus(tab);
+      }
+      startTabHeartbeat(tab);
+    };
+
+    ws.onmessage = (event) => {
+      if (tab.isDisposed) return;
+      tab.lastPongTime = Date.now();
+
+      if (event.data instanceof ArrayBuffer) {
+        const u8 = new Uint8Array(event.data);
+        tab.receivedBytes += u8.byteLength;
+        tab.term.write(u8);
+      } else if (typeof event.data === "string") {
+        if (event.data.startsWith("{") && event.data.endsWith("}")) {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "init" || msg.type === "sync_ack") {
+              if (typeof msg.totalBytes === "number") {
+                tab.receivedBytes = msg.totalBytes;
+              }
+              return;
+            }
+            if (msg.type === "pong") {
+              // Heartbeat verified - do not trigger unnecessary sync!
+              return;
+            }
+            if (msg.type === "exit") {
+              tab.term.write("\r\n\x1b[90m[Process ended]\x1b[0m\r\n");
+              return;
+            }
+          } catch (e) {}
+        }
+        tab.term.write(event.data);
+      }
+    };
+
+    ws.onclose = () => handleTabDisconnect(tab);
+    ws.onerror = () => handleTabDisconnect(tab);
+  }
+
+  function handleTabDisconnect(tab) {
+    if (tab.isDisposed) return;
+    tab.isConnecting = false;
+    stopTabHeartbeat(tab);
+    updateTabStatus(tab, "reconnecting", "Reconnecting...");
+
+    if (!tab.reconnectTimer) {
+      tab.reconnectTimer = setTimeout(() => {
+        tab.reconnectTimer = null;
+        if (!tab.isDisposed) {
+          connectTabWebSocket(tab);
+        }
+      }, 1800);
+    }
+  }
+
+  function startTabHeartbeat(tab) {
+    stopTabHeartbeat(tab);
+    tab.heartbeatTimer = setInterval(() => {
+      if (tab.isDisposed) return;
+      if (!tab.socket || tab.socket.readyState !== WebSocket.OPEN) {
+        handleTabDisconnect(tab);
+        return;
+      }
+      if (Date.now() - tab.lastPongTime > 30000) {
+        try { tab.socket.close(); } catch (e) {}
+        handleTabDisconnect(tab);
+        return;
+      }
+      try {
+        tab.socket.send(JSON.stringify({ type: "ping" }));
+      } catch (e) {
+        handleTabDisconnect(tab);
+      }
+    }, 12000);
+  }
+
+  function stopTabHeartbeat(tab) {
+    if (tab.heartbeatTimer) {
+      clearInterval(tab.heartbeatTimer);
+      tab.heartbeatTimer = null;
+    }
+  }
+
+  function updateTabStatus(tab, state, label) {
+    tab.status = state;
+    tab.statusLabel = label;
+    if (tab.id === currentSessionId) {
+      if (indicatorDot) indicatorDot.className = "indicator-dot " + state;
+      if (indicatorText) indicatorText.textContent = label;
+    }
+  }
+
+  // --------------------------------------------------
+  // Keyboard Focus & Sizing
+  // --------------------------------------------------
+  function ensureKeyboardFocus(targetTab = null) {
+    const tab = targetTab || getActiveTab();
+    if (!tab || !tab.term) return;
+    try {
+      tab.term.focus();
+      const helper = tab.container.querySelector(".xterm-helper-textarea");
+      if (helper) {
+        helper.setAttribute("autocapitalize", "none");
+        helper.setAttribute("autocorrect", "off");
+        helper.setAttribute("autocomplete", "off");
+        helper.setAttribute("spellcheck", "false");
+        helper.setAttribute("inputmode", "text");
+        helper.focus();
+      }
+    } catch (e) {}
+  }
+
+  function safeFitTab(tab) {
+    if (!tab || !tab.fitAddon || !tab.term || tab.container.style.display === "none") return;
+    try {
+      tab.fitAddon.fit();
+      sendTabResize(tab);
+    } catch (e) {}
+  }
+
+  function safeFitActiveTab() {
+    const tab = getActiveTab();
+    if (tab) safeFitTab(tab);
+  }
+
+  function sendTabResize(tab) {
+    if (!tab || !tab.socket || tab.socket.readyState !== WebSocket.OPEN || !tab.term) return;
+    const cols = tab.term.cols;
+    const rows = tab.term.rows;
+    if (cols <= 0 || rows <= 0) return;
+    if (tab.lastCols === cols && tab.lastRows === rows) return; // Prevent SIGWINCH spamming
+    tab.lastCols = cols;
+    tab.lastRows = rows;
+    try {
+      tab.socket.send(JSON.stringify({
+        type: "resize",
+        cols: cols,
+        rows: rows
+      }));
+    } catch (e) {}
+  }
+
+  function sendTerminalInput(data, targetTab = null) {
+    const tab = targetTab || getActiveTab();
+    if (!tab || !tab.socket || tab.socket.readyState !== WebSocket.OPEN) return;
+
+    if (ctrlLatched) {
+      ctrlLatched = false;
+      document.getElementById("btn-ctrl-key")?.classList.remove("active-latch");
+      if (data.length === 1) {
+        const code = data.toUpperCase().charCodeAt(0);
+        if (code >= 65 && code <= 90) {
+          data = String.fromCharCode(code - 64);
+        }
+      }
+    }
+
+    try {
+      tab.socket.send(data);
+    } catch (e) {}
+  }
+
+  // Viewport touch & click handlers
+  terminalViewport?.addEventListener("click", () => ensureKeyboardFocus());
+  terminalViewport?.addEventListener("touchend", () => ensureKeyboardFocus());
+  document.querySelector(".terminal-workspace")?.addEventListener("click", () => ensureKeyboardFocus());
+
+  window.addEventListener("resize", safeFitActiveTab);
+  window.addEventListener("orientationchange", () => setTimeout(safeFitActiveTab, 150));
+
+  // --------------------------------------------------
+  // Mobile Background Resume & Reconnect All Tabs
+  // --------------------------------------------------
+  function checkAndReconnectAllTabs() {
+    terminalTabs.forEach((tab) => {
+      if (!tab.isDisposed) {
+        if (!tab.socket || tab.socket.readyState !== WebSocket.OPEN) {
+          if (tab.reconnectTimer) {
+            clearTimeout(tab.reconnectTimer);
+            tab.reconnectTimer = null;
+          }
+          connectTabWebSocket(tab);
+        } else {
+          try {
+            tab.socket.send(JSON.stringify({ type: "ping" }));
+          } catch (e) {
+            handleTabDisconnect(tab);
+          }
+        }
+      }
+    });
+    setTimeout(() => {
+      safeFitActiveTab();
+      ensureKeyboardFocus();
+    }, 120);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkAndReconnectAllTabs();
+  });
+  window.addEventListener("pageshow", checkAndReconnectAllTabs);
+  window.addEventListener("focus", checkAndReconnectAllTabs);
+  window.addEventListener("online", checkAndReconnectAllTabs);
+
+  // --------------------------------------------------
+  // Tactile Virtual Keypad
+  // --------------------------------------------------
+  document.querySelectorAll("[data-term-key]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const key = btn.getAttribute("data-term-key");
+      handleHardwareKey(key, btn);
+    });
+  });
+
+  function handleHardwareKey(key, btn) {
+    switch (key) {
+      case "ESC":
+        sendTerminalInput("\x1b");
+        break;
+      case "TAB":
+        sendTerminalInput("\t");
+        break;
+      case "CTRL":
+        ctrlLatched = !ctrlLatched;
+        btn.classList.toggle("active-latch", ctrlLatched);
+        break;
+      case "UP":
+        sendTerminalInput("\x1b[A");
+        break;
+      case "DOWN":
+        sendTerminalInput("\x1b[B");
+        break;
+      case "LEFT":
+        sendTerminalInput("\x1b[D");
+        break;
+      case "RIGHT":
+        sendTerminalInput("\x1b[C");
+        break;
+      case "CTRL_C":
+        sendTerminalInput("\x03");
+        break;
+      case "CTRL_D":
+        sendTerminalInput("\x04");
+        break;
+      case "CTRL_Z":
+        sendTerminalInput("\x1a");
+        break;
+      case "CTRL_L":
+        sendTerminalInput("\x0c");
+        break;
+      case "CMD_CLEAR":
+        sendTerminalInput("clear\n");
+        break;
+      case "FOCUS":
+        ensureKeyboardFocus();
+        break;
+      default:
+        sendTerminalInput(key);
+    }
+  }
+
+  // --------------------------------------------------
+  // Mobile Command Entry Field
+  // --------------------------------------------------
+  if (commandForm && commandField) {
+    commandForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = commandField.value;
+      if (!val && val !== "") return;
+
+      sendTerminalInput(val + "\n");
+
+      if (val.trim()) {
+        cmdHistory.unshift(val.trim());
+        if (cmdHistory.length > 60) cmdHistory.pop();
+        localStorage.setItem("terminus_cmd_history", JSON.stringify(cmdHistory));
+      }
+      cmdHistoryIndex = -1;
+      commandField.value = "";
+      ensureKeyboardFocus();
+    });
+
+    commandField.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") {
+        if (cmdHistoryIndex < cmdHistory.length - 1) {
+          cmdHistoryIndex++;
+          commandField.value = cmdHistory[cmdHistoryIndex] || "";
+        }
+        e.preventDefault();
+      } else if (e.key === "ArrowDown") {
+        if (cmdHistoryIndex > 0) {
+          cmdHistoryIndex--;
+          commandField.value = cmdHistory[cmdHistoryIndex] || "";
+        } else if (cmdHistoryIndex === 0) {
+          cmdHistoryIndex = -1;
+          commandField.value = "";
+        }
+        e.preventDefault();
+      }
+    });
+  }
+
+  // --------------------------------------------------
+  // Fluid Gooey Navigation & Tab Engine
+  // --------------------------------------------------
+  // Fluid Gooey Navigation & Tab Engine
+  // --------------------------------------------------
+  function updateGooeyNav(targetBtn = null) {
+    const nav = document.getElementById("view-nav");
+    const pill = document.getElementById("gooey-nav-pill");
+    if (!nav || !pill) return;
+
+    const btn = targetBtn || nav.querySelector(".nav-btn.active");
+    if (!btn || btn.offsetParent === null) {
+      pill.style.opacity = "0";
+      return;
+    }
+
+    const left = btn.offsetLeft;
+    const top = btn.offsetTop;
+    const width = btn.offsetWidth;
+    const height = btn.offsetHeight;
+
+    if (width <= 0 || height <= 0) return;
+
+    pill.style.opacity = "1";
+    pill.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    pill.style.width = `${width}px`;
+    pill.style.height = `${height}px`;
+  }
+
+  function updateGooeyTabs(targetTab = null) {
+    const container = document.getElementById("tabs-container");
+    const pill = document.getElementById("gooey-tab-pill");
+    if (!container || !pill) return;
+
+    const tab = targetTab || container.querySelector(".terminal-tab.active");
+    if (!tab || tab.offsetParent === null) {
+      pill.style.opacity = "0";
+      return;
+    }
+
+    const left = tab.offsetLeft;
+    const top = tab.offsetTop;
+    const width = tab.offsetWidth;
+    const height = tab.offsetHeight;
+
+    if (width <= 0 || height <= 0) return;
+
+    pill.style.opacity = "1";
+    pill.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    pill.style.width = `${width}px`;
+    pill.style.height = `${height}px`;
+  }
+
+  // --------------------------------------------------
+  // View Switcher (Terminal, Dashboard, Agents, Activity, MCP, Projects, Files, Processes, Ports, Logs, Doctor)
+  // --------------------------------------------------
+  navBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.getAttribute("data-view-target");
+      switchView(target);
+    });
+    btn.addEventListener("mouseenter", () => updateGooeyNav(btn));
+  });
+
+  const viewNavEl = document.getElementById("view-nav");
+  if (viewNavEl) {
+    viewNavEl.addEventListener("mouseleave", () => updateGooeyNav());
+    viewNavEl.addEventListener("scroll", () => updateGooeyNav(), { passive: true });
+  }
+
+  const tabsContainerEl = document.getElementById("tabs-container");
+  if (tabsContainerEl) {
+    tabsContainerEl.addEventListener("mouseleave", () => updateGooeyTabs());
+    tabsContainerEl.addEventListener("scroll", () => updateGooeyTabs(), { passive: true });
+  }
+
+  window.addEventListener("resize", () => {
+    updateGooeyNav();
+    updateGooeyTabs();
+  });
+
+  function switchView(viewId) {
+    navBtns.forEach((b) => {
+      const isActive = b.getAttribute("data-view-target") === viewId;
+      b.classList.toggle("active", isActive);
+      if (isActive) {
+        b.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      }
+    });
+    viewPanels.forEach((p) => {
+      p.classList.toggle("active-view", p.id === viewId);
+    });
+
+    requestAnimationFrame(() => updateGooeyNav());
+
+    try {
+      if (viewId === "view-terminal") {
+        safeFitActiveTab();
+        ensureKeyboardFocus();
+      } else if (viewId === "view-dashboard") {
+        loadDashboardView();
+      } else if (viewId === "view-skills") {
+        loadSkillsView();
+      } else if (viewId === "view-memory") {
+        loadMemoryView();
+      } else if (viewId === "view-cron") {
+        loadCronView();
+      } else if (viewId === "view-agents") {
+        loadAgentsView();
+      } else if (viewId === "view-activity") {
+        loadActivityView();
+      } else if (viewId === "view-mcp") {
+        loadMcpView();
+      } else if (viewId === "view-files") {
+        loadFilesView();
+      } else if (viewId === "view-projects") {
+        loadProjectsView();
+      } else if (viewId === "view-processes") {
+        loadProcessesView();
+      } else if (viewId === "view-ports") {
+        loadPortsView();
+      } else if (viewId === "view-logs") {
+        loadLogsView();
+      } else if (viewId === "view-doctor") {
+        loadDoctorView();
+      }
+    } catch (err) {
+      console.error("View switch error for " + viewId, err);
+    }
+  }
+  window.switchView = switchView;
+
+  // --------------------------------------------------
+  // Multi-Tab Management
+  // --------------------------------------------------
+  function renderTabs() {
+    if (!tabsContainer) return;
+    tabsContainer.innerHTML = '<div class="gooey-tab-pill" id="gooey-tab-pill"></div>';
+    activeSessions.forEach((sess) => {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = `terminal-tab ${sess.id === currentSessionId ? "active" : ""}`;
+
+      const tabTitle = document.createElement("span");
+      tabTitle.textContent = sess.title || "Shell";
+      tab.appendChild(tabTitle);
+
+      if (activeSessions.length > 1) {
+        const closeIcon = document.createElement("span");
+        closeIcon.className = "tab-close-icon";
+        closeIcon.innerHTML = `
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        `;
+        closeIcon.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeTab(sess.id);
+        });
+        tab.appendChild(closeIcon);
+      }
+
+      tab.addEventListener("mouseenter", () => updateGooeyTabs(tab));
+      tab.addEventListener("click", () => {
+        switchTab(sess.id);
+      });
+
+      tabsContainer.appendChild(tab);
+    });
+
+    requestAnimationFrame(() => updateGooeyTabs());
+  }
+
+  function switchTab(sid) {
+    currentSessionId = sid;
+    localStorage.setItem("terminus_active_session", sid);
+
+    // Make sure tab instance exists
+    const tabMeta = activeSessions.find(s => s.id === sid);
+    const targetTab = getOrCreateTerminalTab(sid, tabMeta?.title || "Shell", tabMeta?.cwd, tabMeta?.agent_id);
+
+    // Toggle DOM visibility for every tab instance
+    terminalTabs.forEach((tab, id) => {
+      if (id === sid) {
+        tab.container.style.display = "block";
+        safeFitTab(tab);
+        ensureKeyboardFocus(tab);
+        updateTabStatus(tab, tab.status || "online", tab.statusLabel || "Connected");
+      } else {
+        tab.container.style.display = "none";
+      }
+    });
+
+    renderTabs();
+  }
+  window.switchTab = switchTab;
+
+  async function createTab(title = "Shell", initialCmd = null, cwd = null, agentId = null) {
+    const newId = "term-" + Math.random().toString(36).substring(2, 7);
+    activeSessions.push({ id: newId, title: title, cwd: cwd, agent_id: agentId });
+    renderTabs();
+
+    try {
+      await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: newId, title: title, initial_cmd: initialCmd, cwd: cwd, agent_id: agentId })
+      });
+    } catch (e) {}
+
+    getOrCreateTerminalTab(newId, title, cwd, agentId);
+    switchTab(newId);
+    showToast(`Session: ${title}`);
+  }
+  window.createTab = createTab;
+
+  async function openProject(projectPath, agentId = null) {
+    try {
+      const res = await fetch("/api/projects/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: projectPath, agent_id: agentId })
+      });
+      if (!res.ok) {
+        showToast("Failed to open project");
+        return;
+      }
+      const data = await res.json();
+      const existingMeta = activeSessions.find(s => s.id === data.session_id);
+      if (!existingMeta) {
+        activeSessions.push({ id: data.session_id, title: data.title, cwd: data.cwd, agent_id: data.agent_id });
+        renderTabs();
+      }
+      getOrCreateTerminalTab(data.session_id, data.title, data.cwd, data.agent_id);
+      switchView("view-terminal");
+      switchTab(data.session_id);
+      showToast(data.existing ? `Resumed: ${data.title}` : `Opened: ${data.title}`);
+    } catch (e) {
+      showToast("Error opening project");
+    }
+  }
+  window.openProject = openProject;
+
+  function closeTab(sid) {
+    if (activeSessions.length <= 1) return;
+    const tab = terminalTabs.get(sid);
+    if (tab) {
+      tab.isDisposed = true;
+      if (tab.reconnectTimer) clearTimeout(tab.reconnectTimer);
+      if (tab.heartbeatTimer) clearInterval(tab.heartbeatTimer);
+      try { tab.socket?.close(); } catch (e) {}
+      try { tab.term?.dispose(); } catch (e) {}
+      tab.container?.remove();
+      terminalTabs.delete(sid);
+    }
+
+    activeSessions = activeSessions.filter((s) => s.id !== sid);
+    fetch(`/api/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" }).catch(() => {});
+
+    if (currentSessionId === sid) {
+      currentSessionId = activeSessions[0].id;
+      switchTab(currentSessionId);
+    } else {
+      renderTabs();
+    }
+  }
+
+  // Session launcher modal
+  const newSessionModal = document.getElementById("new-session-modal");
+  document.getElementById("btn-new-tab")?.addEventListener("click", () => {
+    newSessionModal?.classList.add("open");
+  });
+
+  document.querySelectorAll("[data-quick-launch]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const agentId = btn.getAttribute("data-quick-launch");
+      const title = btn.getAttribute("data-title") || "Agent";
+      const cmd = btn.getAttribute("data-cmd") || agentId;
+      newSessionModal?.classList.remove("open");
+      switchView("view-terminal");
+      createTab(title, cmd, null, agentId);
+    });
+  });
+
+  // --------------------------------------------------
+  // View: Dashboard (Home Control Plane)
+  // --------------------------------------------------
+  async function loadDashboardView() {
+    try {
+      const [telemRes, sessRes, actRes] = await Promise.all([
+        fetch("/api/telemetry"),
+        fetch("/api/sessions"),
+        fetch("/api/activity?limit=6")
+      ]);
+
+      if (telemRes.ok) {
+        const data = await telemRes.json();
+        const dHost = document.getElementById("dash-hostname");
+        const dOs = document.getElementById("dash-os");
+        const dCpu = document.getElementById("dash-cpu");
+        const dCores = document.getElementById("dash-cpu-cores");
+        const dMem = document.getElementById("dash-mem");
+        const dMemSub = document.getElementById("dash-mem-sub");
+        const dGpu = document.getElementById("dash-gpu");
+        const dDisk = document.getElementById("dash-disk");
+        const dDiskSub = document.getElementById("dash-disk-sub");
+        const dActiveCount = document.getElementById("dash-active-count");
+        const dAgentsSub = document.getElementById("dash-agents-sub");
+
+        if (dHost) dHost.textContent = data.hostname || "localhost";
+        if (dOs) dOs.textContent = `${data.os || "Linux"} (Kernel ${data.kernel || ""})`;
+        if (dCpu) dCpu.textContent = `${data.cpu}%`;
+        if (dCores) dCores.textContent = `${data.cpu_cores} Cores Active (Load: ${data.load_avg?.join(", ")})`;
+        if (dMem) dMem.textContent = `${data.memory.percent}%`;
+        if (dMemSub) dMemSub.textContent = `${data.memory.used_gb} GB / ${data.memory.total_gb} GB`;
+        if (dGpu) dGpu.textContent = data.gpu || "Hardware Acceleration Active";
+        if (dDisk) dDisk.textContent = `${data.disk.percent}%`;
+        if (dDiskSub) dDiskSub.textContent = `${data.disk.free_gb} GB Free / ${data.disk.total_gb} GB`;
+        if (dActiveCount) dActiveCount.textContent = `${data.active_sessions} Active`;
+        if (dAgentsSub) dAgentsSub.textContent = `${data.running_agents_count} Running / ${data.total_agents_count} Discovered`;
+      }
+
+      // Render Active Sessions
+      if (sessRes.ok) {
+        const sessData = await sessRes.json();
+        const sessList = document.getElementById("dash-active-sessions-list");
+        const sessCount = document.getElementById("dash-active-sessions-count");
+        const sList = sessData.sessions || [];
+        if (sessCount) sessCount.textContent = `${sList.length} Active`;
+
+        if (sessList) {
+          sessList.innerHTML = "";
+          if (sList.length === 0) {
+            sessList.innerHTML = `<div style="text-align:center; padding: 24px; color:var(--text-muted); font-size:0.8rem;">No active terminal sessions</div>`;
+          } else {
+            sList.forEach((s) => {
+              const item = document.createElement("div");
+              item.className = "dash-session-item";
+              const isCurr = s.id === currentSessionId;
+              const agentTag = s.agent_id ? s.agent_id.toUpperCase() : "SHELL";
+              item.innerHTML = `
+                <div class="dash-session-left">
+                  <span class="indicator-dot ${isCurr ? 'online' : 'connected'}" style="width:7px; height:7px;"></span>
+                  <div>
+                    <div class="dash-session-title">${s.title}</div>
+                    <div class="dash-session-sub">${s.cwd} · <span class="badge-status installed" style="font-size:0.65rem; padding:1px 4px;">${agentTag}</span></div>
+                  </div>
+                </div>
+                <div style="display:flex; gap:6px;">
+                  <button class="action-btn btn-primary-action" style="padding:2px 8px; font-size:0.72rem;" data-open-sid="${s.id}">Switch</button>
+                  <button class="action-btn" style="padding:2px 8px; font-size:0.72rem; color:var(--accent-rose);" data-close-sid="${s.id}">Close</button>
+                </div>
+              `;
+              item.querySelector("[data-open-sid]")?.addEventListener("click", () => {
+                switchView("view-terminal");
+                switchTab(s.id);
+              });
+              item.querySelector("[data-close-sid]")?.addEventListener("click", () => {
+                closeTab(s.id);
+                loadDashboardView();
+              });
+              sessList.appendChild(item);
+            });
+          }
+        }
+      }
+
+      // Render Dashboard Activity stream preview
+      if (actRes.ok) {
+        const actData = await actRes.json();
+        const actBox = document.getElementById("dash-activity-stream");
+        if (actBox) {
+          actBox.innerHTML = "";
+          const acts = actData.activities || [];
+          if (acts.length === 0) {
+            actBox.innerHTML = `<div style="text-align:center; padding: 24px; color:var(--text-muted); font-size:0.8rem;">No recent agent events</div>`;
+          } else {
+            acts.forEach((a) => {
+              const el = document.createElement("div");
+              el.className = "dash-activity-item";
+              const monoClass = `mono-${(a.agent || 'sh').substring(0, 2).toLowerCase()}`;
+              el.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="agent-monogram ${monoClass}" style="width:20px; height:20px; font-size:0.62rem;">${(a.agent || 'SH').substring(0, 2).toUpperCase()}</span>
+                  <div>
+                    <div style="font-weight:600; font-size:0.8rem; color:var(--text-primary);">${a.title}</div>
+                    <div style="font-size:0.72rem; color:var(--text-muted);">${a.details || a.path || ""}</div>
+                  </div>
+                </div>
+                <div style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-dim); white-space:nowrap;">${a.time_str}</div>
+              `;
+              actBox.appendChild(el);
+            });
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-dashboard-refresh")?.addEventListener("click", loadDashboardView);
+
+  // --------------------------------------------------
+  // Universal Sessions & Agent History Hub
+  // --------------------------------------------------
+  const sessionPickerModal = document.getElementById("session-picker-modal");
+  const sessionPickerSearch = document.getElementById("session-picker-search");
+  const sessionPickerItems = document.getElementById("session-picker-items");
+  let currentSessionFilter = "all";
+
+  const quickAgentMeta = {
+    shell: { title: "Shell", cmd: null, id: null },
+    claude: { title: "Claude Code", cmd: "claude", id: "claude" },
+    hermes: { title: "Hermes", cmd: "/home/jewboy420/hermes-env/bin/hermes", id: "hermes" },
+    agy: { title: "Antigravity", cmd: "agy", id: "agy" },
+    mochi: { title: "Mochi", cmd: "mochi", id: "mochi" },
+    codex: { title: "Codex", cmd: "codex", id: "codex" },
+    cline: { title: "Cline", cmd: "cline", id: "cline" },
+    roo: { title: "Roo Code", cmd: "roo", id: "roo" },
+    aider: { title: "Aider", cmd: "aider", id: "aider" },
+    opencode: { title: "OpenCode", cmd: "opencode", id: "opencode" },
+    gemini: { title: "Gemini CLI", cmd: "gemini", id: "gemini" },
+    jcode: { title: "J-Code", cmd: "jcode repl", id: "jcode" },
+    pi: { title: "Pi", cmd: "pi", id: "pi" },
+    codebuff: { title: "Codebuff", cmd: "codebuff", id: "codebuff" },
+    crush: { title: "Crush", cmd: "crush", id: "crush" }
+  };
+
+  // Quick Agent Launch buttons in modal (both .session-agent-pill and legacy .quick-agent-btn)
+  document.querySelectorAll(".session-agent-pill, .quick-agent-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.getAttribute("data-quick-agent");
+      const meta = quickAgentMeta[key] || { title: "Shell", cmd: null, id: null };
+      closeSessionPicker();
+      switchView("view-terminal");
+      createTab(meta.title, meta.cmd, null, meta.id);
+    });
+  });
+
+  // Filter pills
+  document.querySelectorAll("#session-filter-pills .filter-pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      document.querySelectorAll("#session-filter-pills .filter-pill").forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      currentSessionFilter = pill.getAttribute("data-filter") || "all";
+      renderSessionPicker();
+    });
+  });
+
+  function openSessionPicker() {
+    if (!sessionPickerModal) return;
+    sessionPickerModal.classList.add("open");
+    if (sessionPickerSearch) {
+      sessionPickerSearch.value = "";
+      sessionPickerSearch.focus();
+    }
+    renderSessionPicker();
+  }
+  window.openSessionPicker = openSessionPicker;
+
+  function closeSessionPicker() {
+    sessionPickerModal?.classList.remove("open");
+    if (document.querySelector(".view-panel.active-view")?.id === "view-terminal") {
+      ensureKeyboardFocus();
+    }
+  }
+
+  // --------------------------------------------------
+  // Session Transcript & Conversation Viewer Modal
+  // --------------------------------------------------
+  const sessionTranscriptModal = document.getElementById("session-transcript-modal");
+  const transcriptTitleEl = document.getElementById("transcript-title");
+  const transcriptMetaEl = document.getElementById("transcript-meta");
+  const transcriptMonogramEl = document.getElementById("transcript-monogram");
+  const transcriptContentEl = document.getElementById("transcript-content");
+  const transcriptFilterInput = document.getElementById("transcript-filter-input");
+
+  let activeTranscriptData = {
+    sessionId: null,
+    title: null,
+    agentId: null,
+    cwd: null,
+    fullBuffer: ""
+  };
+
+  async function openSessionTranscript(sessionId, sessionTitle, agentId, cwd, isArchived = false) {
+    if (!sessionTranscriptModal) return;
+    sessionTranscriptModal.classList.add("open");
+
+    const agentCode = (agentId || "sh").substring(0, 2).toLowerCase();
+    if (transcriptMonogramEl) {
+      transcriptMonogramEl.textContent = (agentId || "SH").substring(0, 2).toUpperCase();
+      transcriptMonogramEl.className = `agent-monogram mono-${agentCode}`;
+    }
+    if (transcriptTitleEl) transcriptTitleEl.textContent = `${sessionTitle} — Conversation & Log`;
+    if (transcriptMetaEl) transcriptMetaEl.textContent = `Path: ${cwd || "/home/jewboy420"} · ${isArchived ? "Archived Record" : "Active Terminal Session"}`;
+    if (transcriptFilterInput) transcriptFilterInput.value = "";
+    if (transcriptContentEl) transcriptContentEl.textContent = "Loading conversation transcript...";
+
+    activeTranscriptData = {
+      sessionId,
+      title: sessionTitle,
+      agentId,
+      cwd,
+      fullBuffer: ""
+    };
+
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/buffer`);
+      if (!res.ok) {
+        if (transcriptContentEl) transcriptContentEl.textContent = "Failed to load conversation buffer.";
+        return;
+      }
+      const data = await res.json();
+      const rawText = data.buffer || "No terminal output recorded.";
+      const cleanText = rawText.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+      activeTranscriptData.fullBuffer = cleanText;
+      if (transcriptContentEl) {
+        transcriptContentEl.textContent = cleanText || "Empty session transcript.";
+        transcriptContentEl.scrollTop = transcriptContentEl.scrollHeight;
+      }
+      if (transcriptMetaEl) {
+        const sizeKb = ((data.total_bytes || cleanText.length) / 1024).toFixed(1);
+        transcriptMetaEl.textContent = `${cwd || "/home/jewboy420"} · ${sizeKb} KB · ${data.is_active ? "● Live Active" : "○ Archived"}`;
+      }
+    } catch (err) {
+      if (transcriptContentEl) transcriptContentEl.textContent = "Error fetching transcript: " + err.message;
+    }
+  }
+
+  transcriptFilterInput?.addEventListener("input", () => {
+    const q = (transcriptFilterInput.value || "").toLowerCase();
+    if (!transcriptContentEl || !activeTranscriptData.fullBuffer) return;
+    if (!q) {
+      transcriptContentEl.textContent = activeTranscriptData.fullBuffer;
+      return;
+    }
+    const lines = activeTranscriptData.fullBuffer.split("\n");
+    const matching = lines.filter(l => l.toLowerCase().includes(q));
+    transcriptContentEl.textContent = matching.length > 0 ? matching.join("\n") : `No lines matching "${q}"`;
+  });
+
+  document.getElementById("btn-copy-transcript")?.addEventListener("click", () => {
+    if (!activeTranscriptData.fullBuffer) return;
+    navigator.clipboard.writeText(activeTranscriptData.fullBuffer).then(() => {
+      showToast("Transcript copied to clipboard!");
+    }).catch(() => {
+      showToast("Failed to copy transcript");
+    });
+  });
+
+  document.getElementById("btn-download-transcript")?.addEventListener("click", () => {
+    if (!activeTranscriptData.fullBuffer) return;
+    const blob = new Blob([activeTranscriptData.fullBuffer], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeTitle = (activeTranscriptData.title || "session").replace(/[^a-zA-Z0-9_-]/g, "_");
+    a.download = `terminus-${safeTitle}-${activeTranscriptData.sessionId}.log`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Exported conversation log");
+  });
+
+  document.getElementById("btn-relaunch-from-transcript")?.addEventListener("click", async () => {
+    const sid = activeTranscriptData.sessionId;
+    if (!sid) return;
+    sessionTranscriptModal?.classList.remove("open");
+    closeSessionPicker();
+    switchView("view-terminal");
+
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/relaunch`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        activeSessions.push({ id: data.session_id, title: data.title, cwd: data.cwd, agent_id: data.agent_id });
+        renderTabs();
+        getOrCreateTerminalTab(data.session_id, data.title, data.cwd, data.agent_id);
+        switchTab(data.session_id);
+        showToast(`Relaunched: ${data.title}`);
+      } else {
+        const meta = quickAgentMeta[activeTranscriptData.agentId] || { title: activeTranscriptData.title, cmd: null, id: null };
+        createTab(activeTranscriptData.title || meta.title, meta.cmd, activeTranscriptData.cwd, activeTranscriptData.agentId);
+      }
+    } catch (e) {
+      const meta = quickAgentMeta[activeTranscriptData.agentId] || { title: activeTranscriptData.title, cmd: null, id: null };
+      createTab(activeTranscriptData.title || meta.title, meta.cmd, activeTranscriptData.cwd, activeTranscriptData.agentId);
+    }
+  });
+
+  async function renderSessionPicker() {
+    if (!sessionPickerItems) return;
+    const q = (sessionPickerSearch?.value || "").toLowerCase().trim();
+
+    sessionPickerItems.innerHTML = `<div style="color:var(--text-muted); padding:16px; text-align:center;">Scanning sessions and agent transcripts...</div>`;
+
+    try {
+      const res = await fetch("/api/sessions");
+      if (!res.ok) return;
+      const data = await res.json();
+      const activeList = data.sessions || [];
+      const historyList = data.history || [];
+
+      // Update counters
+      const countActiveEl = document.getElementById("count-active");
+      if (countActiveEl) countActiveEl.textContent = activeList.length;
+      const countArchivedEl = document.getElementById("count-archived");
+      if (countArchivedEl) countArchivedEl.textContent = historyList.length;
+
+      // Sync activeSessions in memory
+      if (activeList.length > 0) {
+        activeSessions = activeList.map(s => ({
+          id: s.id,
+          title: s.title,
+          cwd: s.cwd,
+          agent_id: s.agent_id
+        }));
+        renderTabs();
+      }
+
+      // Combine both active and historical sessions
+      const allSessions = [
+        ...activeList.map(s => ({ ...s, is_active: true })),
+        ...historyList.map(h => ({ ...h, is_active: false }))
+      ];
+
+      // Apply filter
+      let filtered = allSessions.filter(s => {
+        // Category filter
+        if (currentSessionFilter === "active" && !s.is_active) return false;
+        if (currentSessionFilter === "archived" && s.is_active) return false;
+        if (["claude", "hermes", "agy", "mochi", "codex", "cline", "codebuff", "crush", "shell"].includes(currentSessionFilter)) {
+          const aid = (s.agent_id || "shell").toLowerCase();
+          if (currentSessionFilter === "shell") {
+            if (aid !== "shell" && aid !== "sh" && aid !== "" && s.agent_id) return false;
+          } else {
+            if (!aid.includes(currentSessionFilter)) return false;
+          }
+        }
+
+        // Search text filter
+        if (!q) return true;
+        const matchesTitle = (s.title || "").toLowerCase().includes(q);
+        const matchesId = (s.id || "").toLowerCase().includes(q);
+        const matchesCwd = (s.cwd || "").toLowerCase().includes(q);
+        const matchesAgent = (s.agent_id || "").toLowerCase().includes(q);
+        const matchesSnippet = (s.snippet || "").toLowerCase().includes(q);
+        return matchesTitle || matchesId || matchesCwd || matchesAgent || matchesSnippet;
+      });
+
+      sessionPickerItems.innerHTML = "";
+      if (filtered.length === 0) {
+        sessionPickerItems.innerHTML = `<div style="text-align:center; padding:32px 16px; color:var(--text-muted); font-size:0.82rem;">
+          No sessions found matching current filter "${currentSessionFilter}"
+        </div>`;
+        return;
+      }
+
+      filtered.forEach((sess) => {
+        const card = document.createElement("div");
+        const isCurrent = sess.id === currentSessionId && sess.is_active;
+        card.className = `session-picker-card ${isCurrent ? "active" : ""}`;
+
+        const agentCode = (sess.agent_id || "sh").substring(0, 2).toLowerCase();
+        const monoClass = `mono-${agentCode}`;
+        const agentBadge = (sess.agent_id || "SHELL").toUpperCase();
+        const sizeStr = sess.total_bytes ? `${(sess.total_bytes / 1024).toFixed(1)} KB` : "";
+
+        // Format date or relative time
+        let timeLabel = "";
+        if (sess.is_active) {
+          timeLabel = `<span class="badge-status running" style="font-size:0.65rem; padding:1px 6px;">● Active</span>`;
+        } else {
+          let closedDate = sess.closed_at ? new Date(sess.closed_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Past";
+          timeLabel = `<span class="badge-status" style="font-size:0.65rem; padding:1px 6px; background:rgba(255,255,255,0.06); color:var(--text-muted);">○ Closed ${closedDate}</span>`;
+        }
+
+        const snippetHtml = sess.snippet ? `
+          <div class="session-snippet-preview" title="Recent conversation / terminal snippet">
+            ${escapeHtml(sess.snippet)}
+          </div>
+        ` : "";
+
+        card.innerHTML = `
+          <div class="session-card-header">
+            <div class="session-card-info">
+              <span class="agent-monogram ${monoClass}" style="width:30px; height:30px; font-size:0.75rem; flex-shrink:0;">${(sess.agent_id || "SH").substring(0, 2).toUpperCase()}</span>
+              <div style="flex:1; overflow:hidden;">
+                <div class="session-title-edit-wrap">
+                  <span class="session-title-text" id="title-text-${sess.id}">${escapeHtml(sess.title)}</span>
+                  <button type="button" class="action-btn" style="padding:1px 5px; font-size:0.65rem;" data-rename-sid="${sess.id}" title="Rename session">Rename</button>
+                  <span class="badge-status installed" style="font-size:0.65rem; padding:1px 5px;">${agentBadge}</span>
+                  ${timeLabel}
+                </div>
+                <div class="session-sub-meta">
+                  <span style="overflow:hidden; text-overflow:ellipsis;">${escapeHtml(sess.cwd || "/home/jewboy420")}</span>
+                  ${sizeStr ? `<span>· ${sizeStr}</span>` : ""}
+                  ${sess.clients ? `<span>· ${sess.clients} client(s)</span>` : ""}
+                </div>
+              </div>
+            </div>
+
+            <div class="session-picker-actions">
+              ${sess.is_active ? `
+                <button class="action-btn btn-primary-action" data-switch-sid="${sess.id}" style="padding:3px 10px; font-size:0.74rem;">Resume</button>
+                <button class="action-btn" data-transcript-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="View conversation & logs">Transcript</button>
+                <button class="action-btn" data-duplicate-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="Duplicate session">Clone</button>
+                <button class="action-btn" data-export-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="Download transcript log">Export</button>
+                ${activeSessions.length > 1 ? `<button class="action-btn" data-kill-sid="${sess.id}" style="padding:3px 7px; font-size:0.74rem; color:var(--accent-rose);" title="Close tab">✕</button>` : ""}
+              ` : `
+                <button class="action-btn btn-primary-action" data-relaunch-sid="${sess.id}" style="padding:3px 10px; font-size:0.74rem;">⚡ Relaunch</button>
+                <button class="action-btn" data-transcript-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="View past conversation">Conversation</button>
+                <button class="action-btn" data-export-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="Download past transcript">Export</button>
+                <button class="action-btn" data-delete-history-sid="${sess.id}" style="padding:3px 7px; font-size:0.74rem; color:var(--text-muted);" title="Delete from history">✕</button>
+              `}
+            </div>
+          </div>
+          ${snippetHtml}
+        `;
+
+        // Card click / Resume button: actually open that session/conversation/chat with corresponding agent!
+        const doResume = async (e) => {
+          if (e) e.stopPropagation();
+          closeSessionPicker();
+          switchView("view-terminal");
+          showToast(`Resuming ${sess.title}...`);
+
+          try {
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sess.id)}/resume`, { method: "POST" });
+            if (res.ok) {
+              const data = await res.json();
+              const targetSid = data.session_id;
+              let existing = activeSessions.find(s => s.id === targetSid);
+              if (!existing) {
+                activeSessions.push({ id: targetSid, title: data.title, cwd: data.cwd, agent_id: data.agent_id });
+                renderTabs();
+              } else {
+                existing.title = data.title;
+                existing.cwd = data.cwd;
+                existing.agent_id = data.agent_id;
+                renderTabs();
+              }
+              getOrCreateTerminalTab(targetSid, data.title, data.cwd, data.agent_id);
+              switchTab(targetSid);
+              return;
+            }
+          } catch (err) {}
+
+          // Fallback direct switch
+          if (!activeSessions.find(s => s.id === sess.id)) {
+            activeSessions.push({ id: sess.id, title: sess.title, cwd: sess.cwd, agent_id: sess.agent_id });
+            renderTabs();
+          }
+          getOrCreateTerminalTab(sess.id, sess.title, sess.cwd, sess.agent_id);
+          switchTab(sess.id);
+        };
+
+        card.addEventListener("click", doResume);
+        card.querySelector("[data-switch-sid]")?.addEventListener("click", doResume);
+        card.querySelector("[data-relaunch-sid]")?.addEventListener("click", doResume);
+
+        // Transcript button
+        card.querySelector("[data-transcript-sid]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openSessionTranscript(sess.id, sess.title, sess.agent_id, sess.cwd, !sess.is_active);
+        });
+
+        // Rename button
+        card.querySelector("[data-rename-sid]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const titleTextEl = card.querySelector(`#title-text-${sess.id}`);
+          if (!titleTextEl) return;
+          const currentName = titleTextEl.textContent;
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "session-title-input";
+          input.value = currentName;
+          titleTextEl.replaceWith(input);
+          input.focus();
+
+          const saveRename = async () => {
+            const newName = input.value.trim();
+            if (newName && newName !== currentName) {
+              try {
+                await fetch(`/api/sessions/${encodeURIComponent(sess.id)}/rename`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ title: newName })
+                });
+                sess.title = newName;
+                const activeMeta = activeSessions.find(s => s.id === sess.id);
+                if (activeMeta) activeMeta.title = newName;
+                renderTabs();
+                showToast(`Renamed to "${newName}"`);
+              } catch (err) {}
+            }
+            renderSessionPicker();
+          };
+
+          input.addEventListener("keydown", (ke) => {
+            if (ke.key === "Enter") saveRename();
+            if (ke.key === "Escape") renderSessionPicker();
+          });
+          input.addEventListener("blur", saveRename);
+        });
+
+        // Duplicate button
+        card.querySelector("[data-duplicate-sid]")?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const dRes = await fetch(`/api/sessions/${encodeURIComponent(sess.id)}/duplicate`, { method: "POST" });
+            if (dRes.ok) {
+              const dData = await dRes.json();
+              activeSessions.push({ id: dData.session_id, title: dData.title, cwd: dData.cwd, agent_id: dData.agent_id });
+              renderTabs();
+              getOrCreateTerminalTab(dData.session_id, dData.title, dData.cwd, dData.agent_id);
+              closeSessionPicker();
+              switchView("view-terminal");
+              switchTab(dData.session_id);
+              showToast(`Cloned: ${dData.title}`);
+            }
+          } catch (err) {}
+        });
+
+        // Export button
+        card.querySelector("[data-export-sid]")?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const bRes = await fetch(`/api/sessions/${encodeURIComponent(sess.id)}/buffer`);
+            if (bRes.ok) {
+              const bData = await bRes.json();
+              const blob = new Blob([bData.buffer || ""], { type: "text/plain;charset=utf-8" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              const safeTitle = (sess.title || "session").replace(/[^a-zA-Z0-9_-]/g, "_");
+              a.download = `terminus-${safeTitle}-${sess.id}.log`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+              showToast("Exported terminal transcript");
+            }
+          } catch (err) {}
+        });
+
+        // Kill active session
+        card.querySelector("[data-kill-sid]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeTab(sess.id);
+          renderSessionPicker();
+        });
+
+        // Delete from history
+        card.querySelector("[data-delete-history-sid]")?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            await fetch(`/api/sessions/${encodeURIComponent(sess.id)}/history`, { method: "DELETE" });
+            showToast("Removed from history");
+            renderSessionPicker();
+          } catch (err) {}
+        });
+
+        sessionPickerItems.appendChild(card);
+      });
+    } catch (e) {
+      sessionPickerItems.innerHTML = `<div style="color:var(--accent-rose); padding:16px; text-align:center;">Failed to load sessions</div>`;
+    }
+  }
+
+  sessionPickerSearch?.addEventListener("input", renderSessionPicker);
+  document.getElementById("btn-open-session-picker")?.addEventListener("click", openSessionPicker);
+  document.getElementById("btn-subbar-sessions")?.addEventListener("click", openSessionPicker);
+
+  // --------------------------------------------------
+  // Split-Screen Dual Terminal Matrix
+  // --------------------------------------------------
+  let isSplitActive = false;
+  let secondarySessionId = null;
+  let secondaryTab = null;
+
+  const terminalWorkspace = document.getElementById("terminal-workspace");
+  const btnSplitToggle = document.getElementById("btn-split-toggle");
+  const splitSecondarySelect = document.getElementById("split-secondary-select");
+  const splitSecondaryBody = document.getElementById("terminal-viewport-secondary-body");
+
+  function toggleSplitView() {
+    isSplitActive = !isSplitActive;
+    if (terminalWorkspace) {
+      terminalWorkspace.classList.toggle("split-active", isSplitActive);
+    }
+    if (btnSplitToggle) {
+      btnSplitToggle.innerHTML = isSplitActive
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 3v18"/></svg><span>Single View</span>`
+        : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg><span>Split Dual</span>`;
+    }
+
+    if (isSplitActive) {
+      populateSecondaryDropdown();
+      const other = activeSessions.find(s => s.id !== currentSessionId);
+      if (other) {
+        attachSecondarySession(other.id);
+      } else if (activeSessions.length === 1) {
+        createTab("Secondary Shell").then(() => {
+          populateSecondaryDropdown();
+        });
+      }
+    } else {
+      detachSecondarySession();
+    }
+
+    setTimeout(() => {
+      safeFitActiveTab();
+      if (secondaryTab) safeFitTab(secondaryTab);
+    }, 120);
+  }
+  window.toggleSplitView = toggleSplitView;
+
+  function populateSecondaryDropdown() {
+    if (!splitSecondarySelect) return;
+    splitSecondarySelect.innerHTML = `<option value="">Select Session...</option>`;
+    activeSessions.forEach(s => {
+      if (s.id !== currentSessionId) {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = `${s.title} (${(s.agent_id || 'sh').toUpperCase()})`;
+        if (s.id === secondarySessionId) opt.selected = true;
+        splitSecondarySelect.appendChild(opt);
+      }
+    });
+  }
+
+  function attachSecondarySession(sid) {
+    if (!sid || sid === currentSessionId) return;
+    secondarySessionId = sid;
+    const tabMeta = activeSessions.find(s => s.id === sid);
+    secondaryTab = getOrCreateTerminalTab(sid, tabMeta?.title || "Secondary", tabMeta?.cwd, tabMeta?.agent_id);
+
+    if (splitSecondaryBody && secondaryTab.container) {
+      splitSecondaryBody.appendChild(secondaryTab.container);
+      secondaryTab.container.style.display = "block";
+      safeFitTab(secondaryTab);
+    }
+  }
+
+  function detachSecondarySession() {
+    if (secondaryTab && secondaryTab.container && terminalViewport) {
+      terminalViewport.appendChild(secondaryTab.container);
+      if (secondaryTab.id !== currentSessionId) {
+        secondaryTab.container.style.display = "none";
+      }
+    }
+    secondarySessionId = null;
+    secondaryTab = null;
+  }
+
+  btnSplitToggle?.addEventListener("click", toggleSplitView);
+  splitSecondarySelect?.addEventListener("change", (e) => {
+    if (e.target.value) attachSecondarySession(e.target.value);
+  });
+
+  // --------------------------------------------------
+  // View: Universal Skill Tree & Cross-Agent Bridge
+  // --------------------------------------------------
+  let cachedSkillsTree = null;
+  let currentSkillOrigin = "all";
+  let currentSkillSearch = "";
+
+  async function loadSkillsView(force = false) {
+    const root = document.getElementById("skills-tree-root");
+    const countSub = document.getElementById("skills-count-subtitle");
+    if (!root) return;
+
+    if (force || !cachedSkillsTree) {
+      root.innerHTML = `<div style="color:var(--text-muted); padding:32px; text-align:center;">Discovering skills across Hermes, Antigravity, and Claude...</div>`;
+      try {
+        const url = force ? "/api/skills?force=true" : "/api/skills";
+        const res = await fetch(url);
+        if (!res.ok) return;
+        cachedSkillsTree = await res.json();
+      } catch (e) {
+        root.innerHTML = `<div style="color:var(--accent-rose); padding:24px; text-align:center;">Error scanning skill tree</div>`;
+        return;
+      }
+    }
+
+    if (countSub && cachedSkillsTree) {
+      countSub.textContent = `${cachedSkillsTree.total_skills} specialized capability modules across ${cachedSkillsTree.total_categories} categories — usable by any agent`;
+    }
+
+    renderSkillsTree();
+  }
+  window.loadSkillsView = loadSkillsView;
+
+  function renderSkillsTree() {
+    const root = document.getElementById("skills-tree-root");
+    if (!root || !cachedSkillsTree) return;
+
+    const tree = cachedSkillsTree.tree || {};
+    const q = currentSkillSearch.toLowerCase().trim();
+    root.innerHTML = "";
+
+    let totalVisible = 0;
+
+    Object.entries(tree).forEach(([category, skills]) => {
+      let matched = skills.filter(s => {
+        const matchOrigin = currentSkillOrigin === "all" || s.origin.toLowerCase().includes(currentSkillOrigin.toLowerCase());
+        const matchQ = !q ||
+          s.name.toLowerCase().includes(q) ||
+          s.title.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q) ||
+          (s.tags && s.tags.some(t => t.toLowerCase().includes(q))) ||
+          (s.scripts && s.scripts.some(sc => sc.name.toLowerCase().includes(q)));
+        return matchOrigin && matchQ;
+      });
+
+      if (matched.length === 0) return;
+      totalVisible += matched.length;
+
+      const block = document.createElement("div");
+      block.className = "skill-category-block";
+
+      const header = document.createElement("div");
+      header.className = "skill-category-header";
+      header.innerHTML = `
+        <div class="skill-cat-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          <span>${category}</span>
+        </div>
+        <span class="skill-cat-count">${matched.length} skill${matched.length > 1 ? 's' : ''}</span>
+      `;
+
+      const grid = document.createElement("div");
+      grid.className = "skills-cards-grid";
+
+      matched.forEach((s) => {
+        const card = document.createElement("div");
+        card.className = "skill-card";
+
+        const originClass = `skill-origin-${(s.origin || 'universal').toLowerCase().replace(/\s+/g, '')}`;
+
+        card.innerHTML = `
+          <div>
+            <div class="skill-card-top">
+              <div class="skill-name">${s.title}</div>
+              <span class="skill-origin-pill ${originClass}">${s.origin}</span>
+            </div>
+            <div class="skill-desc">${s.description}</div>
+            <div class="skill-tags-row">
+              ${(s.tags || []).slice(0, 4).map(t => `<span class="skill-tag">#${t}</span>`).join('')}
+              ${s.scripts && s.scripts.length > 0 ? `<span class="skill-tag" style="background:rgba(59,130,246,0.15); color:var(--accent-blue);">⚡ ${s.scripts.length} script${s.scripts.length > 1 ? 's' : ''}</span>` : ''}
+            </div>
+          </div>
+          <div class="skill-card-actions">
+            <button class="action-btn btn-primary-action" data-inspect-skill="${s.id}" style="padding:3px 8px; font-size:0.72rem; flex:1;">Inspect</button>
+            <button class="action-btn" data-inject-skill="${s.id}" style="padding:3px 8px; font-size:0.72rem;" title="Inject into active terminal tab">⚡ Inject</button>
+          </div>
+        `;
+
+        card.addEventListener("click", () => inspectSkill(s.id));
+        card.querySelector("[data-inspect-skill]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          inspectSkill(s.id);
+        });
+        card.querySelector("[data-inject-skill]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          injectSkillIntoSession(s.id, currentSessionId);
+        });
+
+        grid.appendChild(card);
+      });
+
+      header.addEventListener("click", () => {
+        const isCollapsed = grid.style.display === "none";
+        grid.style.display = isCollapsed ? "grid" : "none";
+      });
+
+      block.appendChild(header);
+      block.appendChild(grid);
+      root.appendChild(block);
+    });
+
+    if (totalVisible === 0) {
+      root.innerHTML = `<div style="text-align:center; padding:36px; color:var(--text-muted); font-size:0.85rem;">No skills matching criteria</div>`;
+    }
+  }
+
+  // Skill Inspector Modal
+  const skillInspectorModal = document.getElementById("skill-inspector-modal");
+  let currentlyInspectedSkillId = null;
+
+  async function inspectSkill(skillId) {
+    currentlyInspectedSkillId = skillId;
+    if (!skillInspectorModal) return;
+    skillInspectorModal.classList.add("open");
+
+    const tTitle = document.getElementById("inspect-skill-title");
+    const tOrigin = document.getElementById("inspect-origin-pill");
+    const tDesc = document.getElementById("inspect-skill-desc");
+    const tMd = document.getElementById("inspect-skill-markdown");
+    const tScriptsWrap = document.getElementById("inspect-scripts-wrap");
+    const tScriptsList = document.getElementById("inspect-scripts-list");
+
+    if (tTitle) tTitle.textContent = "Loading skill...";
+    if (tMd) tMd.textContent = "Fetching documentation...";
+    if (tScriptsWrap) tScriptsWrap.style.display = "none";
+
+    try {
+      const res = await fetch(`/api/skills/details?id=${encodeURIComponent(skillId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (tTitle) tTitle.textContent = data.title || data.name;
+      if (tOrigin) {
+        tOrigin.textContent = (data.origin || "UNIVERSAL").toUpperCase();
+        tOrigin.className = `skill-origin-pill skill-origin-${(data.origin || 'universal').toLowerCase().replace(/\s+/g, '')}`;
+      }
+      if (tDesc) tDesc.textContent = data.description || "";
+      if (tMd) tMd.textContent = data.content || "(No documentation content)";
+
+      if (data.scripts && data.scripts.length > 0 && tScriptsWrap && tScriptsList) {
+        tScriptsWrap.style.display = "block";
+        tScriptsList.innerHTML = "";
+        data.scripts.forEach(sc => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "action-btn";
+          btn.style.padding = "2px 8px";
+          btn.style.fontSize = "0.72rem";
+          btn.textContent = `▶ ${sc.name}`;
+          btn.title = `Run ${sc.name} in terminal`;
+          btn.addEventListener("click", () => {
+            skillInspectorModal.classList.remove("open");
+            switchView("view-terminal");
+            sendTerminalInput(`python3 "${sc.path}" || bash "${sc.path}"\n`);
+          });
+          tScriptsList.appendChild(btn);
+        });
+      }
+    } catch (e) {
+      if (tMd) tMd.textContent = "Error reading skill documentation";
+    }
+  }
+
+  async function injectSkillIntoSession(skillId, sessionId) {
+    try {
+      const res = await fetch("/api/skills/inject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skill_id: skillId, session_id: sessionId })
+      });
+      if (res.ok) {
+        showToast("Skill instructions injected into active session!");
+        skillInspectorModal?.classList.remove("open");
+        switchView("view-terminal");
+      }
+    } catch (e) {
+      showToast("Error injecting skill");
+    }
+  }
+
+  async function bridgeSkill(skillId, targetAgent) {
+    try {
+      const res = await fetch("/api/skills/bridge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skill_id: skillId, target_agent: targetAgent })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || `Exported skill to ${targetAgent}`);
+      }
+    } catch (e) {
+      showToast(`Error bridging skill to ${targetAgent}`);
+    }
+  }
+
+  document.getElementById("btn-inject-active-session")?.addEventListener("click", () => {
+    if (currentlyInspectedSkillId) injectSkillIntoSession(currentlyInspectedSkillId, currentSessionId);
+  });
+  document.getElementById("btn-bridge-antigravity")?.addEventListener("click", () => {
+    if (currentlyInspectedSkillId) bridgeSkill(currentlyInspectedSkillId, "antigravity");
+  });
+  document.getElementById("btn-bridge-hermes")?.addEventListener("click", () => {
+    if (currentlyInspectedSkillId) bridgeSkill(currentlyInspectedSkillId, "hermes");
+  });
+  document.getElementById("btn-bridge-project")?.addEventListener("click", () => {
+    if (currentlyInspectedSkillId) bridgeSkill(currentlyInspectedSkillId, "project");
+  });
+
+  document.getElementById("skills-search-input")?.addEventListener("input", (e) => {
+    currentSkillSearch = e.target.value;
+    renderSkillsTree();
+  });
+
+  document.querySelectorAll("#skills-origin-filters button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#skills-origin-filters button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentSkillOrigin = btn.getAttribute("data-skill-origin") || "all";
+      renderSkillsTree();
+    });
+  });
+
+  document.getElementById("btn-rescan-skills")?.addEventListener("click", () => loadSkillsView(true));
+
+  // --------------------------------------------------
+  // View: Universal Multi-Agent Memory & Context Hub
+  // --------------------------------------------------
+  async function loadMemoryView() {
+    const grid = document.getElementById("memory-cards-grid");
+    const q = (document.getElementById("memory-search-input")?.value || "").trim();
+    const agent = document.getElementById("memory-agent-select")?.value || "all";
+    if (!grid) return;
+
+    grid.innerHTML = `<div style="color:var(--text-muted); padding:24px;">Loading shared memories and agent knowledge...</div>`;
+
+    try {
+      const url = `/api/memory?query=${encodeURIComponent(q)}&agent=${encodeURIComponent(agent)}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      const mems = data.memories || [];
+
+      grid.innerHTML = "";
+      if (mems.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding:36px; background:var(--bg-surface); border:1px dashed var(--border-subtle); border-radius:8px; text-align:center;">
+            <div style="font-weight:600; color:var(--text-primary); margin-bottom:6px;">No Shared Memories Stored</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); max-width:480px; margin:0 auto;">
+              Add shared memories or architectural guidelines so Claude Code, Hermes, Antigravity, and Mochi share identical context.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      mems.forEach(m => {
+        const card = document.createElement("div");
+        card.className = "memory-card";
+        card.innerHTML = `
+          <div>
+            <div class="memory-header">
+              <div>
+                <div class="memory-title">${m.title}</div>
+                <div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">${m.agent_origin} · ${m.time_str}</div>
+              </div>
+              <button class="action-btn" style="padding:2px 6px; font-size:0.68rem; color:var(--accent-rose);" data-delete-mem="${m.id}" title="Delete memory">✕</button>
+            </div>
+            <div class="memory-content">${m.content}</div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; gap:4px; flex-wrap:wrap;">
+              ${(m.tags || []).map(t => `<span class="skill-tag">#${t}</span>`).join('')}
+            </div>
+            <button class="action-btn" style="padding:2px 8px; font-size:0.7rem;" data-copy-mem="${m.id}">Copy</button>
+          </div>
+        `;
+
+        card.querySelector("[data-delete-mem]")?.addEventListener("click", async () => {
+          if (!confirm(`Delete memory "${m.title}"?`)) return;
+          try {
+            await fetch(`/api/memory/${encodeURIComponent(m.id)}`, { method: "DELETE" });
+            showToast("Deleted memory");
+            loadMemoryView();
+          } catch (e) {}
+        });
+
+        card.querySelector("[data-copy-mem]")?.addEventListener("click", () => {
+          navigator.clipboard?.writeText(m.content).then(() => showToast("Copied memory to clipboard"));
+        });
+
+        grid.appendChild(card);
+      });
+    } catch (e) {
+      grid.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Failed to load memories</div>`;
+    }
+  }
+  window.loadMemoryView = loadMemoryView;
+
+  const addMemoryModal = document.getElementById("add-memory-modal");
+  document.getElementById("btn-open-add-memory")?.addEventListener("click", () => {
+    addMemoryModal?.classList.add("open");
+  });
+  document.getElementById("btn-refresh-memory")?.addEventListener("click", loadMemoryView);
+  document.getElementById("memory-search-input")?.addEventListener("input", () => {
+    clearTimeout(window._memSearchTimer);
+    window._memSearchTimer = setTimeout(loadMemoryView, 250);
+  });
+  document.getElementById("memory-agent-select")?.addEventListener("change", loadMemoryView);
+
+  document.getElementById("add-memory-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const title = document.getElementById("new-mem-title")?.value || "";
+    const content = document.getElementById("new-mem-content")?.value || "";
+    const origin = document.getElementById("new-mem-origin")?.value || "User / Manual";
+    const rawTags = document.getElementById("new-mem-tags")?.value || "";
+    const tags = rawTags.split(",").map(t => t.trim()).filter(Boolean);
+
+    try {
+      const res = await fetch("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content, agent_origin: origin, tags })
+      });
+      if (res.ok) {
+        addMemoryModal?.classList.remove("open");
+        showToast(`Saved memory: "${title}"`);
+        loadMemoryView();
+        document.getElementById("add-memory-form").reset();
+      }
+    } catch (e) {}
+  });
+
+  // --------------------------------------------------
+  // View: Universal Autonomous Cron & Multi-Agent Scheduler
+  // --------------------------------------------------
+  async function loadCronView() {
+    const list = document.getElementById("cron-jobs-list");
+    if (!list) return;
+    list.innerHTML = `<div style="color:var(--text-muted); padding:24px;">Loading autonomous agent tasks...</div>`;
+
+    try {
+      const res = await fetch("/api/cron");
+      if (!res.ok) return;
+      const data = await res.json();
+      const jobs = data.jobs || [];
+
+      list.innerHTML = "";
+      if (jobs.length === 0) {
+        list.innerHTML = `<div style="text-align:center; padding:36px; color:var(--text-muted);">No scheduled tasks configured</div>`;
+        return;
+      }
+
+      jobs.forEach(j => {
+        const card = document.createElement("div");
+        card.className = "cron-card";
+
+        const statusPill = j.last_status === "success"
+          ? `<span class="badge-status installed" style="font-size:0.68rem;">Passed</span>`
+          : (j.last_status === "failed" ? `<span class="badge-status" style="color:var(--accent-rose); font-size:0.68rem;">Failed</span>` : `<span class="badge-status" style="color:var(--text-dim); font-size:0.68rem;">Pending</span>`);
+
+        const toggleBtnText = j.enabled ? "Enabled" : "Disabled";
+        const toggleBtnClass = j.enabled ? "btn-primary-action" : "";
+
+        card.innerHTML = `
+          <div class="cron-info-block">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="cron-name">${j.name}</span>
+              <span class="badge-status running" style="font-size:0.65rem; padding:1px 5px;">${j.agent_name || j.agent_id}</span>
+              ${statusPill}
+            </div>
+            <div class="cron-meta-row">
+              <span>Schedule: <strong>${j.schedule}</strong></span>
+              <span>·</span>
+              <span>Last Run: ${j.last_run_str}</span>
+              <span>·</span>
+              <span>Target: ${j.cwd}</span>
+            </div>
+            <div class="cron-cmd-preview" title="${j.prompt_or_cmd}">$ ${j.prompt_or_cmd}</div>
+          </div>
+          <div class="cron-controls">
+            <button class="action-btn ${toggleBtnClass}" style="padding:4px 10px; font-size:0.75rem;" data-toggle-cron="${j.id}">${toggleBtnText}</button>
+            <button class="action-btn btn-primary-action" style="padding:4px 10px; font-size:0.75rem;" data-run-cron="${j.id}">Run Now ⚡</button>
+            <button class="action-btn" style="padding:4px 8px; font-size:0.75rem; color:var(--accent-rose);" data-delete-cron="${j.id}">✕</button>
+          </div>
+        `;
+
+        card.querySelector("[data-toggle-cron]")?.addEventListener("click", async () => {
+          try {
+            await fetch(`/api/cron/${encodeURIComponent(j.id)}/toggle`, { method: "POST" });
+            loadCronView();
+          } catch (e) {}
+        });
+
+        card.querySelector("[data-run-cron]")?.addEventListener("click", async () => {
+          showToast(`Executing task: ${j.name}...`);
+          try {
+            const rRes = await fetch(`/api/cron/${encodeURIComponent(j.id)}/run`, { method: "POST" });
+            const rData = await rRes.json();
+            showToast(rData.success ? `Task completed successfully!` : `Task failed (code ${rData.exit_code})`);
+            loadCronView();
+          } catch (e) {
+            showToast("Error running task");
+          }
+        });
+
+        card.querySelector("[data-delete-cron]")?.addEventListener("click", async () => {
+          if (!confirm(`Delete task "${j.name}"?`)) return;
+          try {
+            await fetch(`/api/cron/${encodeURIComponent(j.id)}`, { method: "DELETE" });
+            showToast("Deleted task");
+            loadCronView();
+          } catch (e) {}
+        });
+
+        list.appendChild(card);
+      });
+    } catch (e) {
+      list.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Failed to load cron jobs</div>`;
+    }
+  }
+  window.loadCronView = loadCronView;
+
+  const addCronModal = document.getElementById("add-cron-modal");
+  document.getElementById("btn-open-add-cron")?.addEventListener("click", () => {
+    addCronModal?.classList.add("open");
+  });
+  document.getElementById("btn-refresh-cron")?.addEventListener("click", loadCronView);
+
+  document.getElementById("add-cron-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("new-cron-name")?.value || "";
+    const agent_id = document.getElementById("new-cron-agent")?.value || "bash";
+    const schedule = document.getElementById("new-cron-schedule")?.value || "Hourly";
+    const prompt_or_cmd = document.getElementById("new-cron-cmd")?.value || "";
+    const cwd = document.getElementById("new-cron-cwd")?.value || "/home/jewboy420";
+
+    try {
+      const res = await fetch("/api/cron", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, agent_id, prompt_or_cmd, schedule, cwd })
+      });
+      if (res.ok) {
+        addCronModal?.classList.remove("open");
+        showToast(`Scheduled task: "${name}"`);
+        loadCronView();
+        document.getElementById("add-cron-form").reset();
+      }
+    } catch (e) {}
+  });
+
+  // --------------------------------------------------
+  // View: Activity Monitor
+  // --------------------------------------------------
+  async function loadActivityView() {
+    const listEl = document.getElementById("activity-timeline-list");
+    if (!listEl) return;
+    listEl.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:0.82rem;">Loading unified agent activity stream...</div>`;
+
+    try {
+      const res = await fetch("/api/activity?limit=60");
+      if (!res.ok) return;
+      const data = await res.json();
+      const acts = data.activities || [];
+
+      listEl.innerHTML = "";
+      if (acts.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; padding:36px; color:var(--text-muted);">No activity recorded yet</div>`;
+        return;
+      }
+
+      acts.forEach((a) => {
+        const row = document.createElement("div");
+        row.className = "activity-timeline-row";
+        const monoClass = `mono-${(a.agent || 'sh').substring(0, 2).toLowerCase()}`;
+        row.innerHTML = `
+          <div class="activity-left">
+            <span class="agent-monogram ${monoClass}" style="width:24px; height:24px; font-size:0.68rem;">${(a.agent || 'SH').substring(0, 2).toUpperCase()}</span>
+            <div>
+              <div class="activity-title">${a.title}</div>
+              <div class="activity-meta">
+                <span>${a.agent_name || a.agent}</span>
+                <span>·</span>
+                <span class="badge-status installed" style="font-size:0.65rem; padding:1px 5px;">${a.action}</span>
+                ${a.path ? `<span>·</span><span style="font-family:var(--font-mono);">${a.path}</span>` : ""}
+              </div>
+              ${a.details ? `<div class="activity-details">${a.details}</div>` : ""}
+            </div>
+          </div>
+          <div class="activity-time">${a.time_str}</div>
+        `;
+        listEl.appendChild(row);
+      });
+    } catch (e) {
+      listEl.innerHTML = `<div style="color:var(--accent-rose); padding:24px; text-align:center;">Failed to load activity</div>`;
+    }
+  }
+
+  document.getElementById("btn-refresh-activity")?.addEventListener("click", loadActivityView);
+
+  // --------------------------------------------------
+  // View: Model Context Protocol (MCP) Registry
+  // --------------------------------------------------
+  async function loadMcpView() {
+    const grid = document.getElementById("mcp-servers-grid");
+    if (!grid) return;
+    grid.innerHTML = `<div style="color:var(--text-muted); padding:24px;">Scanning MCP servers and multi-agent resource bridges...</div>`;
+
+    try {
+      const res = await fetch("/api/mcp");
+      if (!res.ok) return;
+      const data = await res.json();
+      const servers = data.servers || [];
+
+      grid.innerHTML = "";
+      if (servers.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 32px; background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: 8px; text-align: center;">
+            <div style="font-weight:600; color:var(--text-primary); margin-bottom:6px;">No MCP Servers Discovered</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); max-width:480px; margin:0 auto;">
+              Configure MCP servers in ~/.claude.json, ~/.gemini/config/mcp_config.json, or ~/.hermes/config.yaml to enable unified tools and cross-agent resources.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      servers.forEach((s) => {
+        const card = document.createElement("div");
+        card.className = "mcp-card";
+        const statusBadge = s.status === "active"
+          ? `<span class="badge-status running">● Active</span>`
+          : `<span class="badge-status installed">Configured</span>`;
+
+        card.innerHTML = `
+          <div class="mcp-card-header">
+            <div>
+              <div class="mcp-name">${s.name}</div>
+              <div class="mcp-agent-sub">${s.agent}</div>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="mcp-body">
+            <div class="mcp-prop-row">
+              <span class="mcp-prop-label">Transport</span>
+              <span class="mcp-prop-val">${s.transport.toUpperCase()}</span>
+            </div>
+            <div class="mcp-prop-row">
+              <span class="mcp-prop-label">Source</span>
+              <span class="mcp-prop-val">${s.source}</span>
+            </div>
+            <div class="mcp-cmd-box" title="${s.command} ${(s.args || []).join(' ')}">
+              ${s.command} ${(s.args || []).join(' ')}
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    } catch (e) {
+      grid.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Error scanning MCP registry</div>`;
+    }
+  }
+
+  document.getElementById("btn-refresh-mcp")?.addEventListener("click", loadMcpView);
+
+  // --------------------------------------------------
+  // View: Agent Control Plane (All 18+ Agents)
+  // --------------------------------------------------
+  async function loadAgentsView() {
+    const grid = document.getElementById("agents-grid");
+    if (!grid) return;
+    try {
+      const res = await fetch("/api/agents");
+      if (!res.ok) return;
+      const data = await res.json();
+      cachedAgents = data.agents || [];
+      renderAgentsGrid();
+    } catch (e) {}
+  }
+
+  function renderAgentsGrid() {
+    const grid = document.getElementById("agents-grid");
+    if (!grid) return;
+
+    let list = cachedAgents.slice();
+    if (currentAgentSearch) {
+      const q = currentAgentSearch.toLowerCase().trim();
+      list = list.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        a.id.toLowerCase().includes(q) ||
+        a.description.toLowerCase().includes(q) ||
+        (a.capabilities && a.capabilities.some(c => c.toLowerCase().includes(q)))
+      );
+    }
+
+    grid.innerHTML = "";
+    if (list.length === 0) {
+      grid.innerHTML = `<div style="grid-column: 1 / -1; padding:36px; text-align:center; color:var(--text-muted); font-size:0.85rem;">No coding agents matching search</div>`;
+      return;
+    }
+
+    list.forEach((a) => {
+      const card = document.createElement("div");
+      card.className = "agent-card";
+
+      const statusBadge = a.running_count > 0
+        ? `<span class="badge-status running">● Running (${a.running_count})</span>`
+        : (a.installed ? `<span class="badge-status installed">Installed</span>` : `<span class="badge-status" style="color:var(--text-dim)">Not found</span>`);
+
+      const monoClass = `mono-${a.id.substring(0, 2).toLowerCase()}`;
+
+      card.innerHTML = `
+        <div>
+          <div class="agent-card-top">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="agent-monogram ${monoClass}">${a.name.substring(0, 2).toUpperCase()}</span>
+              <div>
+                <div class="agent-name">${a.name}</div>
+                <div class="agent-version">${a.version || (a.installed ? "Installed" : "Not Found")}</div>
+              </div>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="agent-desc">${a.description}</div>
+          <div class="agent-capabilities" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:8px;">
+            ${(a.capabilities || []).map(c => `<span class="project-lang-pill" style="font-size:0.65rem;">${c}</span>`).join('')}
+          </div>
+        </div>
+        <div class="agent-card-actions">
+          ${a.installed ? `
+            <button class="action-btn btn-primary-action" data-action="launch" data-agent="${a.id}" data-name="${a.name}">Launch</button>
+            ${a.resume_cmd ? `<button class="action-btn" data-action="resume" data-agent="${a.id}" data-name="${a.name}">Resume</button>` : ""}
+          ` : `<button class="action-btn" disabled style="opacity:0.4">Not Installed</button>`}
+        </div>
+      `;
+
+      card.querySelectorAll("[data-action]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const action = btn.getAttribute("data-action");
+          const aid = btn.getAttribute("data-agent");
+          const aname = btn.getAttribute("data-name");
+          launchAgentSession(aid, aname, action);
+        });
+      });
+
+      grid.appendChild(card);
+    });
+  }
+
+  const agentsSearchInput = document.getElementById("agents-search-input");
+  agentsSearchInput?.addEventListener("input", (e) => {
+    currentAgentSearch = e.target.value;
+    renderAgentsGrid();
+  });
+
+  async function launchAgentSession(agentId, agentName, mode = "launch") {
+    try {
+      const res = await fetch("/api/agents/launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: agentId, mode: mode })
+      });
+      if (!res.ok) {
+        showToast(`Failed to launch ${agentName}`);
+        return;
+      }
+      const data = await res.json();
+
+      activeSessions.push({ id: data.session_id, title: data.title, agent_id: data.agent_id });
+      renderTabs();
+      getOrCreateTerminalTab(data.session_id, data.title, null, data.agent_id);
+      switchView("view-terminal");
+      switchTab(data.session_id);
+      showToast(`Launched ${agentName}`);
+    } catch (e) {
+      showToast(`Error launching ${agentName}`);
+    }
+  }
+  window.launchAgentSession = launchAgentSession;
+
+  // --------------------------------------------------
+  // View: Files (File Browser & Code Viewer)
+  // --------------------------------------------------
+  let currentBrowsePath = "";
+  async function loadFilesView(targetPath = "") {
+    const listEl = document.getElementById("files-items-list");
+    const breadcrumbsEl = document.getElementById("files-breadcrumbs");
+    if (!listEl) return;
+
+    try {
+      const res = await fetch(`/api/files?path=${encodeURIComponent(targetPath)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      currentBrowsePath = data.current_path;
+
+      // Breadcrumbs
+      if (breadcrumbsEl) {
+        breadcrumbsEl.innerHTML = "";
+        data.breadcrumbs.forEach((b, idx) => {
+          const crumb = document.createElement("span");
+          crumb.style.cursor = "pointer";
+          crumb.style.color = idx === data.breadcrumbs.length - 1 ? "var(--text-primary)" : "var(--text-muted)";
+          crumb.textContent = b.name;
+          crumb.addEventListener("click", () => loadFilesView(b.path));
+          breadcrumbsEl.appendChild(crumb);
+          if (idx < data.breadcrumbs.length - 1) {
+            const sep = document.createElement("span");
+            sep.textContent = " / ";
+            sep.style.color = "var(--border-strong)";
+            breadcrumbsEl.appendChild(sep);
+          }
+        });
+      }
+
+      // Entries
+      listEl.innerHTML = "";
+      if (data.parent_path) {
+        const upRow = document.createElement("div");
+        upRow.className = "file-row";
+        upRow.innerHTML = `
+          <span style="display:flex; align-items:center; gap:6px; color:var(--text-muted);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span>.. (parent directory)</span>
+          </span>`;
+        upRow.addEventListener("click", () => loadFilesView(data.parent_path));
+        listEl.appendChild(upRow);
+      }
+
+      data.entries.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "file-row";
+
+        let iconSvg = '';
+        if (item.is_dir) {
+          iconSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`;
+        } else if (item.kind === "code") {
+          iconSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`;
+        } else if (item.kind === "config") {
+          iconSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent-amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
+        } else {
+          iconSvg = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>`;
+        }
+
+        row.innerHTML = `
+          <span style="display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis;">
+            ${iconSvg}
+            <span>${item.name}</span>
+          </span>
+          <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">${item.is_dir ? "" : formatBytes(item.size)}</span>
+        `;
+
+        row.addEventListener("click", () => {
+          if (item.is_dir) {
+            loadFilesView(item.path);
+          } else {
+            document.querySelectorAll(".file-row").forEach(r => r.classList.remove("active"));
+            row.classList.add("active");
+            previewFile(item.path, item.name);
+          }
+        });
+
+        listEl.appendChild(row);
+      });
+    } catch (e) {}
+  }
+  window.loadFilesView = loadFilesView;
+
+  async function previewFile(filePath, fileName) {
+    const previewEl = document.getElementById("files-code-preview");
+    const previewTitle = document.getElementById("preview-filename");
+    if (!previewEl) return;
+
+    if (previewTitle) previewTitle.textContent = fileName;
+    previewEl.textContent = "Loading content...";
+
+    try {
+      const res = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
+      if (!res.ok) {
+        previewEl.textContent = "Unable to preview file";
+        return;
+      }
+      const data = await res.json();
+      previewEl.textContent = data.content || "(Empty file)";
+    } catch (e) {
+      previewEl.textContent = "Error reading file";
+    }
+  }
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  }
+
+  const filesSearchInput = document.getElementById("files-search-input");
+  filesSearchInput?.addEventListener("input", (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll("#files-items-list .file-row").forEach(row => {
+      const text = row.textContent.toLowerCase();
+      if (text.includes("parent directory")) return;
+      row.style.display = (!q || text.includes(q)) ? "flex" : "none";
+    });
+  });
+
+  document.getElementById("btn-open-folder-term")?.addEventListener("click", () => {
+    if (currentBrowsePath) {
+      switchView("view-terminal");
+      createTab(currentBrowsePath.split("/").pop() || "Folder", null, currentBrowsePath);
+    }
+  });
+
+  // --------------------------------------------------
+  // View: Process Manager
+  // --------------------------------------------------
+  async function loadProcessesView() {
+    const tableBody = document.getElementById("process-table-body");
+    if (!tableBody) return;
+    try {
+      const res = await fetch("/api/processes");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      tableBody.innerHTML = "";
+      if (data.processes.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 24px; color: var(--text-muted)">No active agent processes running</td></tr>`;
+        return;
+      }
+
+      data.processes.forEach((p) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td style="font-family: var(--font-mono); font-weight:600; color:var(--text-primary)">${p.pid}</td>
+          <td><strong>${p.name}</strong></td>
+          <td style="font-family: var(--font-mono); color:var(--accent-blue)">${p.cpu}%</td>
+          <td style="font-family: var(--font-mono)">${p.mem}%</td>
+          <td style="font-family: var(--font-mono); font-size:0.75rem">${p.runtime}</td>
+          <td style="font-family: var(--font-mono); font-size:0.75rem; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${p.cmd}">${p.cmd}</td>
+          <td>
+            <button class="action-btn" style="color:var(--accent-rose); border-color: rgba(244,63,94,0.3); padding:2px 8px; font-size:0.72rem" data-kill-pid="${p.pid}">Kill</button>
+          </td>
+        `;
+
+        row.querySelector("[data-kill-pid]")?.addEventListener("click", () => {
+          killProcess(p.pid);
+        });
+
+        tableBody.appendChild(row);
+      });
+    } catch (e) {}
+  }
+
+  async function killProcess(pid) {
+    if (!confirm(`Are you sure you want to terminate process ${pid}?`)) return;
+    try {
+      await fetch(`/api/processes/${pid}/kill`, { method: "POST" });
+      showToast(`Terminated PID ${pid}`);
+      setTimeout(loadProcessesView, 400);
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-refresh-processes")?.addEventListener("click", loadProcessesView);
+
+  // --------------------------------------------------
+  // View: Project Workspace Manager
+  // --------------------------------------------------
+  async function loadProjectsView(forceRescan = false) {
+    const tbody = document.getElementById("projects-table-body");
+    const countLabel = document.getElementById("projects-count-label");
+    if (!tbody) return;
+
+    if (forceRescan || cachedProjects.length === 0) {
+      if (countLabel) countLabel.textContent = forceRescan ? "Deep scanning file system for Git repositories..." : "Scanning repositories...";
+      try {
+        const url = forceRescan ? "/api/projects?refresh=true" : "/api/projects";
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          cachedProjects = data.projects || [];
+        }
+      } catch (e) {
+        if (countLabel) countLabel.textContent = "Error scanning projects";
+      }
+    }
+
+    renderProjectsTable();
+  }
+
+  function renderProjectsTable() {
+    const tbody = document.getElementById("projects-table-body");
+    const countLabel = document.getElementById("projects-count-label");
+    const dirtyBadge = document.getElementById("dirty-count-badge");
+    if (!tbody) return;
+
+    // Filter
+    let list = cachedProjects.slice();
+    const dirtyCount = list.filter(p => p.dirty).length;
+    if (dirtyBadge) {
+      dirtyBadge.textContent = dirtyCount;
+      dirtyBadge.style.display = dirtyCount > 0 ? "inline-block" : "none";
+    }
+
+    if (currentProjectSearch) {
+      const q = currentProjectSearch.toLowerCase().trim();
+      list = list.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.rel_path.toLowerCase().includes(q) ||
+        (p.lang && p.lang.toLowerCase().includes(q)) ||
+        (p.branch && p.branch.toLowerCase().includes(q))
+      );
+    }
+
+    // Sort
+    if (currentProjectSort === "recent") {
+      list.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+    } else if (currentProjectSort === "alpha") {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (currentProjectSort === "lang") {
+      list.sort((a, b) => (a.lang || "").localeCompare(b.lang || "") || a.name.localeCompare(b.name));
+    } else if (currentProjectSort === "dirty") {
+      list = list.filter(p => p.dirty);
+      list.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+    }
+
+    if (countLabel) {
+      countLabel.textContent = `${cachedProjects.length} repositories discovered across machine (${list.length} shown)`;
+    }
+
+    tbody.innerHTML = "";
+    if (list.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:36px; color:var(--text-muted); font-size:0.82rem;">No matching repositories found</td></tr>`;
+      return;
+    }
+
+    list.forEach((proj) => {
+      const row = document.createElement("tr");
+      row.className = "project-row";
+
+      const dirtyTag = proj.dirty
+        ? `<span class="project-dirty-tag"><span class="project-dirty-dot"></span>${proj.modified_count || 1} uncommitted</span>`
+        : `<span class="project-dirty-tag clean"><span class="project-dirty-dot clean"></span>clean</span>`;
+
+      const lastAgentDisplay = proj.last_agent ? (proj.last_agent.charAt(0).toUpperCase() + proj.last_agent.slice(1)) : "Shell";
+
+      row.innerHTML = `
+        <td>
+          <div class="project-repo-name">${proj.name}</div>
+          <div class="project-path-sub">${proj.rel_path}</div>
+        </td>
+        <td>
+          <div class="project-branch-tag">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"></line>
+              <circle cx="18" cy="6" r="3"></circle>
+              <circle cx="6" cy="18" r="3"></circle>
+              <path d="M18 9a9 9 0 0 1-9 9"></path>
+            </svg>
+            <span>${proj.branch}</span>
+          </div>
+          <div>${dirtyTag}</div>
+        </td>
+        <td>
+          <span class="project-lang-pill">${proj.lang}</span>
+        </td>
+        <td>
+          <span class="project-agent-pill">${lastAgentDisplay}</span>
+        </td>
+        <td>
+          <div class="project-row-actions">
+            <button class="btn-open-proj" data-open-proj="${proj.path}" title="Open repository in terminal or resume active session">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+              <span>Open</span>
+            </button>
+            <button class="quick-agent-btn" data-agent-launch="claude" data-proj="${proj.path}" title="Launch Claude Code in ${proj.name}">CC</button>
+            <button class="quick-agent-btn" data-agent-launch="hermes" data-proj="${proj.path}" title="Launch Hermes Agent in ${proj.name}">HE</button>
+            <button class="quick-agent-btn" data-agent-launch="mochi" data-proj="${proj.path}" title="Launch Mochi in ${proj.name}">MO</button>
+            <button class="quick-agent-btn" data-agent-launch="agy" data-proj="${proj.path}" title="Launch Antigravity in ${proj.name}">AG</button>
+          </div>
+        </td>
+      `;
+
+      row.querySelector("[data-open-proj]")?.addEventListener("click", () => {
+        openProject(proj.path);
+      });
+
+      row.querySelectorAll("[data-agent-launch]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const agentId = btn.getAttribute("data-agent-launch");
+          openProject(proj.path, agentId);
+        });
+      });
+
+      tbody.appendChild(row);
+    });
+  }
+
+  const projSearchInput = document.getElementById("project-search-input");
+  const projSearchClear = document.getElementById("project-search-clear");
+
+  projSearchInput?.addEventListener("input", (e) => {
+    currentProjectSearch = e.target.value;
+    if (projSearchClear) {
+      projSearchClear.style.display = currentProjectSearch ? "block" : "none";
+    }
+    renderProjectsTable();
+  });
+
+  projSearchClear?.addEventListener("click", () => {
+    if (projSearchInput) projSearchInput.value = "";
+    currentProjectSearch = "";
+    projSearchClear.style.display = "none";
+    renderProjectsTable();
+  });
+
+  document.querySelectorAll("#project-sort-controls .segment-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#project-sort-controls .segment-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentProjectSort = btn.getAttribute("data-sort") || "recent";
+      renderProjectsTable();
+    });
+  });
+
+  document.getElementById("btn-rescan-projects")?.addEventListener("click", () => {
+    loadProjectsView(true);
+  });
+
+  // --------------------------------------------------
+  // View: Ports
+  // --------------------------------------------------
+  async function loadPortsView() {
+    const tbody = document.getElementById("ports-table-body");
+    if (!tbody) return;
+    try {
+      const res = await fetch("/api/ports");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      tbody.innerHTML = "";
+      data.ports.forEach((p) => {
+        const row = document.createElement("tr");
+        const accessUrl = `http://${hostPillText.textContent.split(":")[0]}:${p.port}`;
+        row.innerHTML = `
+          <td style="font-family:var(--font-mono); font-weight:700; color:var(--accent-blue)">:${p.port}</td>
+          <td><span class="badge-status installed">${p.tag}</span></td>
+          <td><strong>${p.process}</strong></td>
+          <td style="font-family:var(--font-mono); font-size:0.75rem">${p.pid || "-"}</td>
+          <td style="font-family:var(--font-mono); font-size:0.75rem">${p.address}</td>
+          <td>
+            ${p.is_public ? `<a href="${accessUrl}" target="_blank" class="action-btn" style="text-decoration:none; padding:2px 8px; font-size:0.72rem">Open ↗</a>` : `<span style="color:var(--text-dim); font-size:0.72rem">Local Only</span>`}
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-refresh-ports")?.addEventListener("click", loadPortsView);
+
+  // --------------------------------------------------
+  // View: Logs Stream
+  // --------------------------------------------------
+  const logSourceSelect = document.getElementById("log-source-select");
+  const logSearchInput = document.getElementById("log-search-input");
+  const logsBox = document.getElementById("logs-stream-box");
+
+  async function loadLogsView() {
+    if (!logsBox) return;
+    const source = logSourceSelect ? logSourceSelect.value : "terminus";
+    const query = logSearchInput ? logSearchInput.value : "";
+
+    logsBox.textContent = "Fetching log stream...";
+
+    try {
+      const res = await fetch(`/api/logs?source=${encodeURIComponent(source)}&query=${encodeURIComponent(query)}&lines=120`);
+      if (!res.ok) {
+        logsBox.textContent = "Failed to load logs";
+        return;
+      }
+      const data = await res.json();
+      if (data.lines.length === 0) {
+        logsBox.textContent = "No log lines matching criteria";
+        return;
+      }
+      logsBox.innerHTML = "";
+      data.lines.forEach((line) => {
+        const div = document.createElement("div");
+        div.className = "log-line";
+        div.textContent = line;
+        logsBox.appendChild(div);
+      });
+      logsBox.scrollTop = logsBox.scrollHeight;
+    } catch (e) {
+      logsBox.textContent = "Error loading logs";
+    }
+  }
+
+  logSourceSelect?.addEventListener("change", loadLogsView);
+  logSearchInput?.addEventListener("input", () => {
+    clearTimeout(window._logSearchDebounce);
+    window._logSearchDebounce = setTimeout(loadLogsView, 300);
+  });
+  document.getElementById("btn-refresh-logs")?.addEventListener("click", loadLogsView);
+
+  // --------------------------------------------------
+  // View: Doctor Diagnostics
+  // --------------------------------------------------
+  async function loadDoctorView() {
+    const grid = document.getElementById("doctor-grid");
+    const summaryEl = document.getElementById("doctor-summary");
+    if (!grid) return;
+
+    grid.innerHTML = `<div style="color:var(--text-muted); padding:24px;">Running full machine diagnostics...</div>`;
+
+    try {
+      const res = await fetch("/api/doctor");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      grid.innerHTML = "";
+      if (summaryEl) {
+        summaryEl.textContent = data.overall === "ok"
+          ? "All systems nominal. Machine is fully tuned for agent orchestration."
+          : "Diagnostics completed with recommendations below.";
+      }
+
+      data.checks.forEach((c) => {
+        const card = document.createElement("div");
+        card.className = "doctor-card";
+        const badgeClass = c.status === "ok" ? "ok" : (c.status === "warn" ? "warn" : "error");
+        const badgeText = c.status === "ok" ? "PASSED" : (c.status === "warn" ? "NOTICE" : "FAILED");
+
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+            <div style="font-weight:600; font-size:0.9rem; color:var(--text-primary)">${c.name}</div>
+            <span class="doctor-status-badge ${badgeClass}">${badgeText}</span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-secondary); line-height:1.4;">${c.message}</div>
+        `;
+        grid.appendChild(card);
+      });
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-run-doctor")?.addEventListener("click", loadDoctorView);
+
+  // --------------------------------------------------
+  // Global Raycast / Linear Command Palette (Ctrl+K / Cmd+K)
+  // --------------------------------------------------
+  const paletteOverlay = document.getElementById("command-palette");
+  const paletteInput = document.getElementById("palette-input");
+  const paletteResults = document.getElementById("palette-results");
+
+  const PALETTE_COMMANDS = [
+    { title: "Control Plane Overview (Dashboard)", cat: "Views", action: () => switchView("view-dashboard") },
+    { title: "Open Terminal (Persistent PTY)", cat: "Views", action: () => switchView("view-terminal") },
+    { title: "Session Switcher & Process Manager", cat: "Terminal", action: openSessionPicker },
+    { title: "Toggle Split Dual Screen", cat: "Terminal", action: toggleSplitView },
+    { title: "Universal Skill Tree (170+ Skills)", cat: "Views", action: () => switchView("view-skills") },
+    { title: "Multi-Agent Memory & Context Hub", cat: "Views", action: () => switchView("view-memory") },
+    { title: "Universal Autonomous Cron Scheduler", cat: "Views", action: () => switchView("view-cron") },
+    { title: "Agent Discovery Engine", cat: "Views", action: () => switchView("view-agents") },
+    { title: "Live Agent Activity Monitor", cat: "Views", action: () => switchView("view-activity") },
+    { title: "Model Context Protocol (MCP) Registry", cat: "Views", action: () => switchView("view-mcp") },
+    { title: "Browse Project Repositories", cat: "Views", action: () => switchView("view-projects") },
+    { title: "File Explorer & Code Previewer", cat: "Views", action: () => switchView("view-files") },
+    { title: "Process & Runaway Loop Manager", cat: "Views", action: () => switchView("view-processes") },
+    { title: "Listening Ports & Dev Servers", cat: "Views", action: () => switchView("view-ports") },
+    { title: "Unified Log Stream", cat: "Views", action: () => switchView("view-logs") },
+    { title: "Run Terminus Doctor Diagnostics", cat: "Diagnostics", action: () => switchView("view-doctor") },
+    { title: "Rescan All Machine Skills", cat: "Skills", action: () => { switchView("view-skills"); loadSkillsView(true); } },
+    { title: "Add Shared Cross-Agent Memory", cat: "Memory", action: () => addMemoryModal?.classList.add("open") },
+    { title: "Schedule New Autonomous Agent Task", cat: "Tasks", action: () => addCronModal?.classList.add("open") },
+    { title: "New Standard Shell Tab", cat: "Terminal", action: () => { switchView("view-terminal"); createTab("Shell"); } },
+    { title: "Clear Active Terminal Screen", cat: "Terminal", action: () => { sendTerminalInput("clear\n"); } },
+    { title: "Launch Claude Code", cat: "Agents", action: () => launchAgentSession("claude", "Claude Code") },
+    { title: "Launch Hermes Agent", cat: "Agents", action: () => launchAgentSession("hermes", "Hermes") },
+    { title: "Launch Antigravity", cat: "Agents", action: () => launchAgentSession("antigravity", "Antigravity") },
+    { title: "Launch Mochi", cat: "Agents", action: () => launchAgentSession("mochi", "Mochi") },
+    { title: "Launch Codex CLI", cat: "Agents", action: () => launchAgentSession("codex", "Codex K") },
+    { title: "Launch Cline", cat: "Agents", action: () => launchAgentSession("cline", "Cline") },
+    { title: "Launch Roo Code", cat: "Agents", action: () => launchAgentSession("roo", "Roo Code") },
+    { title: "Launch Aider", cat: "Agents", action: () => launchAgentSession("aider", "Aider") },
+    { title: "Launch OpenCode", cat: "Agents", action: () => launchAgentSession("opencode", "OpenCode") },
+    { title: "Launch Gemini CLI", cat: "Agents", action: () => launchAgentSession("gemini", "Gemini CLI") },
+    { title: "Launch Goose", cat: "Agents", action: () => launchAgentSession("goose", "Goose") },
+    { title: "Launch J-Code", cat: "Agents", action: () => launchAgentSession("jcode", "J-Code") },
+    { title: "Launch Codebuff", cat: "Agents", action: () => launchAgentSession("codebuff", "Codebuff") },
+    { title: "Launch Crush (Charmbracelet)", cat: "Agents", action: () => launchAgentSession("crush", "Crush") },
+    { title: "Copy LAN Access URL", cat: "Network", action: () => hostPill?.click() }
+  ];
+
+  function openPalette() {
+    if (!paletteOverlay) return;
+    paletteOverlay.classList.add("open");
+    if (paletteInput) {
+      paletteInput.value = "";
+      renderPaletteResults("");
+      paletteInput.focus();
+    }
+  }
+
+  function closePalette() {
+    paletteOverlay?.classList.remove("open");
+    if (document.querySelector(".view-panel.active-view")?.id === "view-terminal") {
+      ensureKeyboardFocus();
+    }
+  }
+
+  function renderPaletteResults(query) {
+    if (!paletteResults) return;
+    paletteResults.innerHTML = "";
+    const q = query.toLowerCase().trim();
+    let filtered = PALETTE_COMMANDS.filter(c => !q || c.title.toLowerCase().includes(q) || c.cat.toLowerCase().includes(q));
+
+    // Dynamic project search in palette
+    if (q && cachedProjects && cachedProjects.length > 0) {
+      const matchedProjects = cachedProjects
+        .filter(p => p.name.toLowerCase().includes(q) || p.rel_path.toLowerCase().includes(q))
+        .slice(0, 6)
+        .map(p => ({
+          title: `${p.name} (${p.rel_path})`,
+          cat: "Repositories",
+          action: () => openProject(p.path)
+        }));
+      filtered = filtered.concat(matchedProjects);
+    }
+
+    let lastCat = null;
+    filtered.forEach((cmd, idx) => {
+      if (cmd.cat !== lastCat) {
+        lastCat = cmd.cat;
+        const catEl = document.createElement("div");
+        catEl.className = "palette-category";
+        catEl.textContent = cmd.cat;
+        paletteResults.appendChild(catEl);
+      }
+
+      const item = document.createElement("div");
+      item.className = `palette-item ${idx === 0 ? "active" : ""}`;
+      item.innerHTML = `
+        <span>${cmd.title}</span>
+        <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted);">⏎ Run</span>
+      `;
+
+      item.addEventListener("click", () => {
+        closePalette();
+        cmd.action();
+      });
+
+      paletteResults.appendChild(item);
+    });
+  }
+
+  paletteInput?.addEventListener("input", (e) => {
+    renderPaletteResults(e.target.value);
+  });
+
+  paletteInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closePalette();
+    } else if (e.key === "Enter") {
+      const activeItem = paletteResults.querySelector(".palette-item.active");
+      if (activeItem) activeItem.click();
+    }
+  });
+
+  paletteOverlay?.addEventListener("click", (e) => {
+    if (e.target === paletteOverlay) closePalette();
+  });
+
+  document.getElementById("btn-open-palette")?.addEventListener("click", openPalette);
+
+  // Global Keybindings (Ctrl+K, Ctrl+O, Alt+S, / for search)
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      if (paletteOverlay?.classList.contains("open")) {
+        closePalette();
+      } else {
+        openPalette();
+      }
+    } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "o" || e.key.toLowerCase() === "p")) {
+      e.preventDefault();
+      openSessionPicker();
+    } else if (e.altKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      toggleSplitView();
+    } else if (e.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+      const activePanel = document.querySelector(".view-panel.active-view");
+      if (activePanel?.id === "view-projects") {
+        e.preventDefault();
+        projSearchInput?.focus();
+      } else if (activePanel?.id === "view-agents") {
+        e.preventDefault();
+        agentsSearchInput?.focus();
+      } else if (activePanel?.id === "view-skills") {
+        e.preventDefault();
+        document.getElementById("skills-search-input")?.focus();
+      } else if (activePanel?.id === "view-memory") {
+        e.preventDefault();
+        document.getElementById("memory-search-input")?.focus();
+      }
+    }
+  });
+
+  // --------------------------------------------------
+  // Global Telemetry Polling
+  // --------------------------------------------------
+  async function fetchTelemetry() {
+    try {
+      const res = await fetch("/api/telemetry");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (telemCpu) telemCpu.textContent = `${data.cpu}%`;
+      if (telemMem) telemMem.textContent = `${data.memory.percent}%`;
+      if (telemDisk) telemDisk.textContent = `${data.disk.percent}%`;
+      if (hostPillText) hostPillText.textContent = `${data.lan_ip}:${data.port}`;
+    } catch (e) {}
+  }
+
+  hostPill?.addEventListener("click", () => {
+    const url = `http://${hostPillText.textContent}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      showToast(`Copied ${url} to clipboard`);
+    });
+  });
+
+  // Modal Close buttons
+  document.querySelectorAll(".modal-close-btn, [data-modal-close]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".modal-overlay").forEach((m) => m.classList.remove("open"));
+    });
+  });
+
+  // --------------------------------------------------
+  // Boot & Initial Session Synchronization
+  // --------------------------------------------------
+  async function boot() {
+    try {
+      const res = await fetch("/api/sessions");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.sessions && data.sessions.length > 0) {
+          activeSessions = data.sessions.map(s => ({
+            id: s.id,
+            title: s.title,
+            cwd: s.cwd,
+            agent_id: s.agent_id
+          }));
+          if (!activeSessions.find(s => s.id === currentSessionId)) {
+            currentSessionId = activeSessions[0].id;
+          }
+        }
+      }
+    } catch (e) {}
+
+    renderTabs();
+
+    // Initialize all active sessions so their PTY instances and sockets are live
+    activeSessions.forEach((s) => {
+      getOrCreateTerminalTab(s.id, s.title, s.cwd, s.agent_id);
+    });
+
+    switchTab(currentSessionId);
+    setTimeout(() => {
+      updateGooeyNav();
+      updateGooeyTabs();
+    }, 80);
+
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => {
+        safeFitActiveTab();
+        terminalTabs.forEach((tab) => {
+          try {
+            if (tab.term) {
+              if (tab.term._core && tab.term._core._charSizeService) {
+                tab.term._core._charSizeService.measure();
+              }
+              if (tab.fitAddon) {
+                tab.fitAddon.fit();
+              }
+              tab.term.refresh(0, tab.term.rows - 1);
+            }
+          } catch (e) {}
+        });
+        updateGooeyNav();
+        updateGooeyTabs();
+      });
+    }
+
+    fetchTelemetry();
+    setInterval(fetchTelemetry, 6000);
+
+    // Warm projects, agents, skills, memory, cron in background
+    fetch("/api/projects").then(r => r.json()).then(d => {
+      cachedProjects = d.projects || [];
+    }).catch(() => {});
+
+    fetch("/api/agents").then(r => r.json()).then(d => {
+      cachedAgents = d.agents || [];
+    }).catch(() => {});
+
+    fetch("/api/skills").then(r => r.json()).then(d => {
+      cachedSkillsTree = d;
+    }).catch(() => {});
+
+    fetch("/api/memory").catch(() => {});
+    fetch("/api/cron").catch(() => {});
+  }
+
+  boot();
+});

@@ -1,0 +1,1098 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ app_name }} — {{ app_tagline }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Terminus">
+  <meta name="theme-color" content="#09090b">
+  
+  <!-- High-Precision Monospace & Fluid Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300..800;1,300..800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/xterm.css?v=2.6.0">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=2.6.0">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Global Header -->
+    <header class="top-header">
+      <div class="header-left">
+        <a href="/" class="brand-wrap">
+          <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          <span>terminus</span>
+        </a>
+        <span class="brand-tagline">{{ app_tagline }}</span>
+        
+        <div class="connection-indicator">
+          <span class="indicator-dot" id="indicator-dot"></span>
+          <span id="indicator-text">Connected</span>
+        </div>
+      </div>
+
+      <!-- Navigation Switcher with Gooey Spring Pill -->
+      <nav class="view-nav" id="view-nav">
+        <div class="gooey-nav-pill" id="gooey-nav-pill"></div>
+        <button type="button" class="nav-btn active" data-view-target="view-terminal" title="Terminal (PTY Engine)">
+          <span>Terminal</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-dashboard" title="Control Plane Overview">
+          <span>Dashboard</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-skills" title="Universal Skill Tree & Cross-Agent Bridge">
+          <span>Skills</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-memory" title="Universal Multi-Agent Memory & Context Hub">
+          <span>Memory</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-cron" title="Universal Autonomous Cron & Multi-Agent Scheduler">
+          <span>Cron</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-agents" title="Agent Discovery Engine">
+          <span>Agents</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-activity" title="Live Unified Activity Stream">
+          <span>Activity</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-mcp" title="Universal MCP Registry">
+          <span>MCP</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-projects" title="Git Repositories">
+          <span>Projects</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-files" title="File Explorer & Code Viewer">
+          <span>Files</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-processes" title="Process Monitor">
+          <span>Processes</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-ports" title="Listening Ports & Dev Servers">
+          <span>Ports</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-logs" title="Centralized Agent Logs">
+          <span>Logs</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-doctor" title="Machine Diagnostics">
+          <span>Doctor</span>
+        </button>
+      </nav>
+
+      <!-- Meta / Actions -->
+      <div class="header-right">
+        <button type="button" class="action-btn" id="btn-open-session-picker" title="Visual Session Picker & Manager (Ctrl+O / Cmd+O)" style="display:flex; align-items:center; gap:5px; height:28px; padding:0 8px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+            <path d="M9 3v18"></path>
+          </svg>
+          <span>Sessions</span>
+          <kbd style="background: rgba(255,255,255,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.65rem;">⌘O</kbd>
+        </button>
+
+        <button type="button" class="palette-trigger" id="btn-open-palette" title="Global Command Palette (Ctrl+K)">
+          <span>Search</span>
+          <kbd style="background: rgba(255,255,255,0.08); padding: 1px 4px; border-radius: 3px; font-size: 0.68rem;">⌘K</kbd>
+        </button>
+
+        <div class="telemetry-group">
+          <div class="telemetry-item">CPU <span id="telem-cpu">{{ telemetry.cpu }}%</span></div>
+          <div class="telemetry-item">RAM <span id="telem-mem">{{ telemetry.memory.percent }}%</span></div>
+          <div class="telemetry-item">SSD <span id="telem-disk">{{ telemetry.disk.percent }}%</span></div>
+        </div>
+
+        <button type="button" class="host-pill" id="host-pill" title="Tap to copy LAN address">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          <span id="host-pill-text">{{ telemetry.lan_ip }}:{{ telemetry.port }}</span>
+        </button>
+
+        {% if auth_enabled %}
+        <form action="/api/logout" method="post" style="display:inline;">
+          <button type="submit" class="action-btn" title="Sign out" style="padding: 0 8px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Main Views Container -->
+    <main class="views-container">
+      
+      <!-- ================= VIEW 1: TERMINAL ================= -->
+      <div id="view-terminal" class="view-panel active-view">
+        <div class="terminal-subbar">
+          <div class="tabs-container" id="tabs-container">
+            <div class="gooey-tab-pill" id="gooey-tab-pill"></div>
+          </div>
+          <button type="button" class="btn-new-tab" id="btn-new-tab" title="Launch New Agent or Shell Tab">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <div style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+            <button type="button" class="action-btn" id="btn-split-toggle" title="Toggle Split View / Dual Terminal (Alt+S)" style="height:26px; padding:0 8px; font-size:0.72rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <line x1="12" y1="3" x2="12" y2="21"></line>
+              </svg>
+              <span>Split Dual</span>
+            </button>
+            <button type="button" class="action-btn" id="btn-subbar-sessions" title="Session Picker (Ctrl+O)" style="height:26px; padding:0 8px; font-size:0.72rem;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                <path d="M9 3v18"></path>
+              </svg>
+              <span>Sessions</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="terminal-workspace" id="terminal-workspace">
+          <div id="terminal-viewport"></div>
+          <div id="terminal-viewport-secondary">
+            <div class="split-secondary-header">
+              <span id="split-secondary-title">Secondary Session</span>
+              <select id="split-secondary-select" class="command-field" style="height:22px; font-size:0.7rem; width:150px; padding:0 4px;">
+                <option value="">Select Session...</option>
+              </select>
+            </div>
+            <div id="terminal-viewport-secondary-body" style="width:100%; height:calc(100% - 28px); position:relative;"></div>
+          </div>
+        </div>
+
+        <!-- Mobile Keypad Toolbar -->
+        <footer class="mobile-toolbar">
+          <div class="keypad-scroll-row">
+            <button type="button" class="terminal-key" data-term-key="ESC">ESC</button>
+            <button type="button" class="terminal-key" data-term-key="TAB">TAB</button>
+            <button type="button" class="terminal-key" id="btn-ctrl-key" data-term-key="CTRL">CTRL</button>
+            <button type="button" class="terminal-key" data-term-key="UP">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+            </button>
+            <button type="button" class="terminal-key" data-term-key="DOWN">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+            </button>
+            <button type="button" class="terminal-key" data-term-key="LEFT">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <button type="button" class="terminal-key" data-term-key="RIGHT">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </button>
+            <button type="button" class="terminal-key key-danger" data-term-key="CTRL_C">^C</button>
+            <button type="button" class="terminal-key" data-term-key="CTRL_D">^D</button>
+            <button type="button" class="terminal-key" data-term-key="CTRL_Z">^Z</button>
+            <button type="button" class="terminal-key" data-term-key="CMD_CLEAR">clear</button>
+            <button type="button" class="terminal-key" data-term-key="FOCUS" title="Focus keyboard">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect>
+                <line x1="6" y1="8" x2="6.01" y2="8"></line>
+                <line x1="10" y1="8" x2="10.01" y2="8"></line>
+                <line x1="14" y1="8" x2="14.01" y2="8"></line>
+                <line x1="18" y1="8" x2="18.01" y2="8"></line>
+                <line x1="6" y1="12" x2="6.01" y2="12"></line>
+                <line x1="18" y1="12" x2="18.01" y2="12"></line>
+                <line x1="7" y1="16" x2="17" y2="16"></line>
+              </svg>
+            </button>
+          </div>
+
+          <form id="command-form" class="command-entry-bar">
+            <input 
+              type="text" 
+              id="command-field" 
+              class="command-field" 
+              placeholder="Command or agent prompt..." 
+              autocomplete="off" 
+              autocorrect="off" 
+              autocapitalize="off" 
+              spellcheck="false"
+            >
+            <button type="submit" class="btn-command-send">
+              <span>Return</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 10 4 15 9 20"></polyline>
+                <path d="M20 4v7a4 4 0 0 1-4 4H4"></path>
+              </svg>
+            </button>
+          </form>
+        </footer>
+      </div>
+
+      <!-- ================= VIEW: DASHBOARD (HOME) ================= -->
+      <div id="view-dashboard" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Control Plane Overview</div>
+              <div class="section-subtitle">Universal machine orchestrator & coding agent gateway</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <span class="badge-status running" id="dashboard-status-badge">● Online · Direct</span>
+              <button class="action-btn" id="btn-dashboard-refresh">Refresh Metrics</button>
+            </div>
+          </div>
+
+          <!-- Hero Metrics Cards -->
+          <div class="dashboard-hero-grid">
+            <div class="dash-stat-card">
+              <div class="stat-label">Host & Kernel</div>
+              <div class="stat-value" id="dash-hostname">{{ telemetry.hostname }}</div>
+              <div class="stat-sub" id="dash-os">{{ telemetry.os }}</div>
+            </div>
+            <div class="dash-stat-card">
+              <div class="stat-label">CPU & Load</div>
+              <div class="stat-value" id="dash-cpu">{{ telemetry.cpu }}%</div>
+              <div class="stat-sub" id="dash-cpu-cores">{{ telemetry.cpu_cores }} Cores Active</div>
+            </div>
+            <div class="dash-stat-card">
+              <div class="stat-label">Memory</div>
+              <div class="stat-value" id="dash-mem">{{ telemetry.memory.percent }}%</div>
+              <div class="stat-sub" id="dash-mem-sub">{{ telemetry.memory.used_gb }} GB / {{ telemetry.memory.total_gb }} GB</div>
+            </div>
+            <div class="dash-stat-card">
+              <div class="stat-label">Graphics & Display</div>
+              <div class="stat-value" style="font-size: 0.88rem; line-height: 1.3;" id="dash-gpu">{{ telemetry.gpu }}</div>
+              <div class="stat-sub">Hardware Acceleration Active</div>
+            </div>
+            <div class="dash-stat-card">
+              <div class="stat-label">Storage</div>
+              <div class="stat-value" id="dash-disk">{{ telemetry.disk.percent }}%</div>
+              <div class="stat-sub" id="dash-disk-sub">{{ telemetry.disk.free_gb }} GB Free / {{ telemetry.disk.total_gb }} GB</div>
+            </div>
+            <div class="dash-stat-card">
+              <div class="stat-label">Terminals & Agents</div>
+              <div class="stat-value" id="dash-active-count">{{ telemetry.active_sessions }} Active</div>
+              <div class="stat-sub" id="dash-agents-sub">{{ telemetry.running_agents_count }} Running / {{ telemetry.total_agents_count }} Discovered</div>
+            </div>
+          </div>
+
+          <!-- Quick Action Commands Bar -->
+          <div class="dashboard-quick-bar">
+            <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">Quick Actions:</span>
+            <button class="action-btn btn-primary-action" onclick="switchView('view-terminal'); createTab('Shell');">
+              + New Shell
+            </button>
+            <button class="action-btn" data-dash-launch="claude">
+              <span class="agent-monogram mono-cc" style="width:18px; height:18px; font-size:0.6rem;">CC</span> Claude Code
+            </button>
+            <button class="action-btn" data-dash-launch="hermes">
+              <span class="agent-monogram mono-he" style="width:18px; height:18px; font-size:0.6rem;">HE</span> Hermes
+            </button>
+            <button class="action-btn" data-dash-launch="mochi">
+              <span class="agent-monogram mono-mo" style="width:18px; height:18px; font-size:0.6rem;">MO</span> Mochi
+            </button>
+            <button class="action-btn" data-dash-launch="antigravity">
+              <span class="agent-monogram mono-ag" style="width:18px; height:18px; font-size:0.6rem;">AG</span> Antigravity
+            </button>
+            <button class="action-btn" onclick="switchView('view-projects');">
+              Browse Projects
+            </button>
+            <button class="action-btn" onclick="switchView('view-doctor');">
+              Doctor Diagnostics
+            </button>
+          </div>
+
+          <!-- 2-Column Split: Active Sessions & Activity Stream -->
+          <div class="dashboard-split-grid">
+            <div class="dashboard-panel-box">
+              <div class="panel-box-header">
+                <span class="panel-box-title">Active Terminal & Agent Sessions</span>
+                <span class="badge-status installed" id="dash-active-sessions-count">0 Active</span>
+              </div>
+              <div class="panel-box-body" id="dash-active-sessions-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <div class="dashboard-panel-box">
+              <div class="panel-box-header">
+                <span class="panel-box-title">Live Agent Activity Stream</span>
+                <button class="action-btn" style="padding:2px 8px; font-size:0.72rem;" onclick="switchView('view-activity');">View All ↗</button>
+              </div>
+              <div class="panel-box-body" id="dash-activity-stream">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: SKILL TREE ================= -->
+      <div id="view-skills" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Universal Skill Tree & Cross-Agent Bridge</div>
+              <div class="section-subtitle" id="skills-count-subtitle">170+ specialized workflows and capability modules — usable by any agent</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="action-btn" id="btn-rescan-skills">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Rescan Skills</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Skills Toolbar (Search & Origin Filter) -->
+          <div class="skills-toolbar">
+            <div style="flex:1; min-width:240px;">
+              <input type="text" id="skills-search-input" class="command-field" placeholder="Search 170+ skills by title, tags, description, or scripts..." style="width:100%; height:32px;">
+            </div>
+            <div class="skills-filter-group" id="skills-origin-filters">
+              <button type="button" class="segment-btn active" data-skill-origin="all">All Skills</button>
+              <button type="button" class="segment-btn" data-skill-origin="hermes">Hermes (142)</button>
+              <button type="button" class="segment-btn" data-skill-origin="antigravity">Antigravity (5)</button>
+              <button type="button" class="segment-btn" data-skill-origin="claude">Claude Code (27)</button>
+            </div>
+          </div>
+
+          <!-- Tree Root -->
+          <div class="skills-tree-container" id="skills-tree-root">
+            <!-- Dynamically populated by category accordions -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: MEMORY HUB ================= -->
+      <div id="view-memory" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Universal Multi-Agent Memory & Context Hub</div>
+              <div class="section-subtitle">Shared long-term knowledge bank and guidelines readable by all agents</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="action-btn btn-primary-action" id="btn-open-add-memory">+ Add Shared Memory</button>
+              <button class="action-btn" id="btn-refresh-memory">Refresh</button>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+            <input type="text" id="memory-search-input" class="command-field" placeholder="Search shared memories and guidelines..." style="flex:1; min-width:240px; height:32px;">
+            <select id="memory-agent-select" class="command-field" style="width:180px; height:32px;">
+              <option value="all">All Origins</option>
+              <option value="Hermes">Hermes</option>
+              <option value="Antigravity">Antigravity</option>
+              <option value="Terminus">Terminus Core</option>
+              <option value="User">User / Manual</option>
+            </select>
+          </div>
+
+          <div class="memory-grid" id="memory-cards-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: CRON SCHEDULER ================= -->
+      <div id="view-cron" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Universal Autonomous Cron & Multi-Agent Scheduler</div>
+              <div class="section-subtitle">Schedule recurring routines and background jobs across any installed coding agent</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="action-btn btn-primary-action" id="btn-open-add-cron">+ Schedule Task</button>
+              <button class="action-btn" id="btn-refresh-cron">Refresh</button>
+            </div>
+          </div>
+
+          <div class="cron-grid" id="cron-jobs-list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 2: AGENTS ================= -->
+      <div id="view-agents" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Agent Discovery Engine</div>
+              <div class="section-subtitle">Universal registry of coding agents, CLI tools, and autonomous runners</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="action-btn" onclick="document.getElementById('new-session-modal').classList.add('open');">
+                + Launch Agent
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <input type="text" id="agents-search-input" class="command-field" placeholder="Search agents by name, capability, or category..." style="width: 100%; max-width: 420px; height: 32px;">
+          </div>
+
+          <div class="agent-grid" id="agents-grid"></div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: ACTIVITY STREAM ================= -->
+      <div id="view-activity" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Unified Agent Activity Monitor</div>
+              <div class="section-subtitle">Real-time chronological timeline of commands, edits, and operations across all agents</div>
+            </div>
+            <button class="action-btn" id="btn-refresh-activity">Refresh Feed</button>
+          </div>
+
+          <div class="activity-timeline-container" id="activity-timeline-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: MCP REGISTRY ================= -->
+      <div id="view-mcp" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Model Context Protocol (MCP) Registry</div>
+              <div class="section-subtitle">Configured tool servers and multi-agent resource bridges discovered on this machine</div>
+            </div>
+            <button class="action-btn" id="btn-refresh-mcp">Scan MCP Servers</button>
+          </div>
+
+          <div class="mcp-grid" id="mcp-servers-grid">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 3: FILES ================= -->
+      <div id="view-files" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">File Explorer & Code Previewer</div>
+              <div class="section-subtitle">Browse workspace files and inspect source code directly</div>
+            </div>
+            <button class="action-btn" id="btn-open-folder-term">Open Folder in Terminal</button>
+          </div>
+          <div class="files-layout">
+            <div class="files-sidebar">
+              <div class="files-breadcrumbs" id="files-breadcrumbs"></div>
+              <div style="padding: 6px 8px 0;">
+                <input type="text" id="files-search-input" class="command-field" placeholder="Filter files in folder..." style="height: 28px; width: 100%; font-size: 0.74rem;">
+              </div>
+              <div class="files-list" id="files-items-list"></div>
+            </div>
+            <div class="files-preview">
+              <div class="preview-header">
+                <span style="font-family:var(--font-mono); font-size:0.78rem; font-weight:600;" id="preview-filename">Select a file to preview</span>
+              </div>
+              <pre class="code-viewer" id="files-code-preview">Select any code, config, or markdown file from the left sidebar to preview its contents.</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 4: PROJECTS ================= -->
+      <div id="view-projects" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Project Repositories</div>
+              <div class="section-subtitle" id="projects-count-label">Scanning local repositories...</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="action-btn" id="btn-rescan-projects" title="Rescan file system for Git repositories">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>Rescan</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Projects Toolbar (Filter, Sort, Search) -->
+          <div class="projects-toolbar">
+            <div class="projects-search-wrap">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="project-search-input" class="projects-search-field" placeholder="Filter repositories by name, path, language... (Press / to focus)">
+              <button type="button" id="project-search-clear" class="search-clear-btn" style="display:none;">✕</button>
+            </div>
+
+            <div class="projects-filter-group">
+              <div class="segmented-control" id="project-sort-controls">
+                <button type="button" class="segment-btn active" data-sort="recent">Recent</button>
+                <button type="button" class="segment-btn" data-sort="alpha">A–Z</button>
+                <button type="button" class="segment-btn" data-sort="lang">Language</button>
+                <button type="button" class="segment-btn" data-sort="dirty">Dirty <span class="dirty-badge" id="dirty-count-badge" style="display:none;">0</span></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- High-Density Projects Table -->
+          <div class="projects-table-wrap">
+            <table class="projects-table">
+              <thead>
+                <tr>
+                  <th style="width: 34%;">Repository</th>
+                  <th style="width: 18%;">Branch / Status</th>
+                  <th style="width: 14%;">Tech Stack</th>
+                  <th style="width: 14%;">Last Agent</th>
+                  <th style="text-align: right; width: 20%;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="projects-table-body">
+                <!-- Dynamically populated rows -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 5: PROCESSES ================= -->
+      <div id="view-processes" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Process & Runaway Loop Manager</div>
+              <div class="section-subtitle">Inspect active agent processes and terminate stuck execution loops</div>
+            </div>
+            <button class="action-btn" id="btn-refresh-processes">Refresh</button>
+          </div>
+          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>Process</th>
+                  <th>CPU</th>
+                  <th>RAM</th>
+                  <th>Runtime</th>
+                  <th>Command</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="process-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 6: PORTS ================= -->
+      <div id="view-ports" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Active Ports & Dev Servers</div>
+              <div class="section-subtitle">Listening ports, backend services, and web previews</div>
+            </div>
+            <button class="action-btn" id="btn-refresh-ports">Scan Ports</button>
+          </div>
+          <div style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 8px; overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Port</th>
+                  <th>Service Tag</th>
+                  <th>Process</th>
+                  <th>PID</th>
+                  <th>Address</th>
+                  <th>Access</th>
+                </tr>
+              </thead>
+              <tbody id="ports-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 7: LOGS ================= -->
+      <div id="view-logs" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Unified Agent & System Logs</div>
+              <div class="section-subtitle">Stream and search logs from Terminus, Hermes, J-Code, and system journals</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select id="log-source-select" class="command-field" style="width: 220px; height: 30px;">
+                <option value="terminus">Terminus Daemon</option>
+                <option value="hermes">Hermes Agent Log</option>
+                <option value="hermes-errors">Hermes Errors</option>
+                <option value="hermes-gateway">Hermes Gateway</option>
+                <option value="jcode">J-Code Daily Log</option>
+                <option value="system">System Journal</option>
+              </select>
+              <input type="text" id="log-search-input" class="command-field" placeholder="Filter logs..." style="width: 180px; height: 30px;">
+              <button class="action-btn" id="btn-refresh-logs">Refresh</button>
+            </div>
+          </div>
+          <div class="logs-viewer-box" id="logs-stream-box">Select a log source above to stream.</div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 8: DOCTOR ================= -->
+      <div id="view-doctor" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Terminus Doctor</div>
+              <div class="section-subtitle" id="doctor-summary">Machine diagnostics & orchestration readiness</div>
+            </div>
+            <button class="action-btn btn-primary-action" id="btn-run-doctor">Run Diagnostics</button>
+          </div>
+          <div class="doctor-grid" id="doctor-grid"></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Launch Session Modal -->
+  <div class="modal-overlay" id="new-session-modal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-heading">Launch Session</div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px;">
+        Select an agent or shell to start in a dedicated PTY session:
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+        <button class="action-btn modal-agent-btn" data-quick-launch="bash" data-title="Shell" data-cmd="">
+          <span class="agent-monogram mono-sh">SH</span>
+          <span class="agent-btn-text">Standard Shell</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="claude" data-title="Claude" data-cmd="claude">
+          <span class="agent-monogram mono-cc">CC</span>
+          <span class="agent-btn-text">Claude Code</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="hermes" data-title="Hermes" data-cmd="/home/jewboy420/hermes-env/bin/hermes">
+          <span class="agent-monogram mono-he">HE</span>
+          <span class="agent-btn-text">Hermes Agent</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="agy" data-title="Antigravity" data-cmd="agy">
+          <span class="agent-monogram mono-ag">AG</span>
+          <span class="agent-btn-text">Antigravity</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="mochi" data-title="Mochi" data-cmd="mochi">
+          <span class="agent-monogram mono-mo">MO</span>
+          <span class="agent-btn-text">Mochi</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="codex" data-title="Codex" data-cmd="codex">
+          <span class="agent-monogram mono-cx">CX</span>
+          <span class="agent-btn-text">Codex K</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="cline" data-title="Cline" data-cmd="cline">
+          <span class="agent-monogram mono-cl">CL</span>
+          <span class="agent-btn-text">Cline</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="roo" data-title="Roo Code" data-cmd="roo">
+          <span class="agent-monogram mono-cl">RC</span>
+          <span class="agent-btn-text">Roo Code</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="aider" data-title="Aider" data-cmd="aider">
+          <span class="agent-monogram mono-he">AI</span>
+          <span class="agent-btn-text">Aider</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="opencode" data-title="OpenCode" data-cmd="opencode">
+          <span class="agent-monogram mono-ag">OC</span>
+          <span class="agent-btn-text">OpenCode</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="gemini" data-title="Gemini" data-cmd="gemini">
+          <span class="agent-monogram mono-cc">GM</span>
+          <span class="agent-btn-text">Gemini CLI</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="goose" data-title="Goose" data-cmd="goose session">
+          <span class="agent-monogram mono-mo">GS</span>
+          <span class="agent-btn-text">Goose</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="continue" data-title="Continue" data-cmd="continue">
+          <span class="agent-monogram mono-cx">CN</span>
+          <span class="agent-btn-text">Continue</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="cursor" data-title="Cursor" data-cmd="cursor">
+          <span class="agent-monogram mono-sh">CU</span>
+          <span class="agent-btn-text">Cursor CLI</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="jcode" data-title="J-Code" data-cmd="jcode repl">
+          <span class="agent-monogram mono-jc">JC</span>
+          <span class="agent-btn-text">J-Code</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="codebuff" data-title="Codebuff" data-cmd="codebuff">
+          <span class="agent-monogram mono-cb">CB</span>
+          <span class="agent-btn-text">Codebuff</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="crush" data-title="Crush" data-cmd="crush">
+          <span class="agent-monogram mono-cr">CR</span>
+          <span class="agent-btn-text">Crush (Charm)</span>
+        </button>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="button" class="action-btn" data-modal-close>Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Picker & Universal Agent History Modal -->
+  <div class="modal-overlay" id="session-picker-modal">
+    <div class="modal-box session-picker-modal">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+            <path d="M9 3v18"></path>
+          </svg>
+          <div>
+            <div class="modal-heading">Universal Sessions & Agent History Hub</div>
+            <div style="font-size:0.72rem; color:var(--text-muted);">Manage active runtimes, switch contexts, and inspect agent conversations</div>
+          </div>
+        </div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Quick Agent Spawner Row -->
+      <div class="session-modal-quickbar">
+        <div class="session-quickbar-top">
+          <div class="quickbar-title-wrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            <span class="quickbar-label">Launch New Agent / Shell</span>
+          </div>
+          <span class="quickbar-sub">Tap any agent to start in persistent PTY</span>
+        </div>
+        <div class="session-agent-grid">
+          <button type="button" class="session-agent-pill" data-quick-agent="shell" title="Interactive Shell">
+            <span class="agent-monogram mono-sh">SH</span>
+            <span class="agent-pill-name">Shell</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="claude" title="Claude Code">
+            <span class="agent-monogram mono-cc">CC</span>
+            <span class="agent-pill-name">Claude Code</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="hermes" title="Hermes Agent">
+            <span class="agent-monogram mono-he">HE</span>
+            <span class="agent-pill-name">Hermes</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="agy" title="Antigravity">
+            <span class="agent-monogram mono-ag">AG</span>
+            <span class="agent-pill-name">Antigravity</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="mochi" title="Mochi">
+            <span class="agent-monogram mono-mo">MO</span>
+            <span class="agent-pill-name">Mochi</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="codex" title="Codex">
+            <span class="agent-monogram mono-cx">CX</span>
+            <span class="agent-pill-name">Codex</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="cline" title="Cline">
+            <span class="agent-monogram mono-cl">CL</span>
+            <span class="agent-pill-name">Cline</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="roo" title="Roo Code">
+            <span class="agent-monogram mono-rc">RC</span>
+            <span class="agent-pill-name">Roo Code</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="aider" title="Aider">
+            <span class="agent-monogram mono-ai">AI</span>
+            <span class="agent-pill-name">Aider</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="opencode" title="OpenCode">
+            <span class="agent-monogram mono-oc">OC</span>
+            <span class="agent-pill-name">OpenCode</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="gemini" title="Gemini CLI">
+            <span class="agent-monogram mono-gm">GM</span>
+            <span class="agent-pill-name">Gemini</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="jcode" title="J-Code">
+            <span class="agent-monogram mono-jc">JC</span>
+            <span class="agent-pill-name">J-Code</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="pi" title="Pi">
+            <span class="agent-monogram mono-pi">PI</span>
+            <span class="agent-pill-name">Pi</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="codebuff" title="Codebuff">
+            <span class="agent-monogram mono-cb">CB</span>
+            <span class="agent-pill-name">Codebuff</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="crush" title="Crush (Charm)">
+            <span class="agent-monogram mono-cr">CR</span>
+            <span class="agent-pill-name">Crush</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Search & Category Filters -->
+      <div class="session-modal-controls">
+        <div class="session-search-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="session-picker-search" class="command-field" placeholder="Search sessions, conversations, agents, directories (type to filter)..." style="flex:1; height:32px;">
+        </div>
+        <div class="session-filter-pills" id="session-filter-pills">
+          <button type="button" class="filter-pill active" data-filter="all">All</button>
+          <button type="button" class="filter-pill" data-filter="active">Active (<span id="count-active">0</span>)</button>
+          <button type="button" class="filter-pill" data-filter="claude">Claude</button>
+          <button type="button" class="filter-pill" data-filter="hermes">Hermes</button>
+          <button type="button" class="filter-pill" data-filter="agy">Antigravity</button>
+          <button type="button" class="filter-pill" data-filter="mochi">Mochi</button>
+          <button type="button" class="filter-pill" data-filter="codex">Codex</button>
+          <button type="button" class="filter-pill" data-filter="cline">Cline</button>
+          <button type="button" class="filter-pill" data-filter="codebuff">Codebuff</button>
+          <button type="button" class="filter-pill" data-filter="crush">Crush</button>
+          <button type="button" class="filter-pill" data-filter="shell">Shell</button>
+          <button type="button" class="filter-pill" data-filter="archived">History / Archived (<span id="count-archived">0</span>)</button>
+        </div>
+      </div>
+
+      <!-- Dynamic Session List -->
+      <div class="session-picker-list" id="session-picker-items">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Session Conversation & Transcript Viewer Modal -->
+  <div class="modal-overlay" id="session-transcript-modal">
+    <div class="modal-box session-transcript-box">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="agent-monogram mono-ag" id="transcript-monogram" style="width:30px; height:30px; font-size:0.8rem;">AG</span>
+          <div>
+            <div class="modal-heading" id="transcript-title">Session Conversation & Log</div>
+            <div class="session-sub-meta" id="transcript-meta">Loading metadata...</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="action-btn" id="btn-copy-transcript" title="Copy entire conversation to clipboard">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Copy</span>
+          </button>
+          <button type="button" class="action-btn" id="btn-download-transcript" title="Export transcript file">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Export</span>
+          </button>
+          <button type="button" class="action-btn btn-primary-action" id="btn-relaunch-from-transcript" title="Relaunch this session in a live terminal tab">
+            ⚡ Open in Terminal
+          </button>
+          <button type="button" class="modal-close-btn" data-modal-close>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="transcript-search-bar" style="margin-bottom:10px;">
+        <input type="text" id="transcript-filter-input" class="command-field" placeholder="Search inside conversation..." style="width:100%; height:30px; font-size:0.75rem;">
+      </div>
+
+      <pre class="transcript-output-pane" id="transcript-content">Loading conversation...</pre>
+    </div>
+  </div>
+
+  <!-- Universal Skill Inspector & Cross-Agent Bridge Modal -->
+  <div class="modal-overlay" id="skill-inspector-modal">
+    <div class="modal-box" style="width: 95vw; max-width: 820px; max-height: 88vh; display:flex; flex-direction:column;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="skill-origin-pill skill-origin-hermes" id="inspect-origin-pill">HERMES</span>
+          <div class="modal-heading" id="inspect-skill-title">Skill Title</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.45; margin-bottom:12px;" id="inspect-skill-desc">
+        Skill description
+      </div>
+
+      <!-- Cross-Agent Bridge Bar -->
+      <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:6px; padding:8px 12px; margin-bottom:12px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px;">
+        <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">
+          Cross-Agent Actions:
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="action-btn btn-primary-action" id="btn-inject-active-session" style="padding:3px 10px; font-size:0.74rem;">
+            ⚡ Inject into Active Tab
+          </button>
+          <button type="button" class="action-btn" id="btn-bridge-antigravity" style="padding:3px 8px; font-size:0.74rem;">
+            Bridge to Antigravity
+          </button>
+          <button type="button" class="action-btn" id="btn-bridge-hermes" style="padding:3px 8px; font-size:0.74rem;">
+            Bridge to Hermes
+          </button>
+          <button type="button" class="action-btn" id="btn-bridge-project" style="padding:3px 8px; font-size:0.74rem;">
+            Export to Project (.skills)
+          </button>
+        </div>
+      </div>
+
+      <!-- Scripts Section (if any) -->
+      <div id="inspect-scripts-wrap" style="margin-bottom:12px; display:none;">
+        <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">Executable Scripts:</div>
+        <div id="inspect-scripts-list" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
+
+      <!-- Markdown Preview -->
+      <div style="flex:1; overflow-y:auto; background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:14px;">
+        <pre id="inspect-skill-markdown" style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-primary); white-space:pre-wrap; word-break:break-word; margin:0;">Loading documentation...</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Memory Modal -->
+  <div class="modal-overlay" id="add-memory-modal">
+    <div class="modal-box" style="width: 95vw; max-width: 520px;">
+      <div class="modal-header">
+        <div class="modal-heading">Add Shared Cross-Agent Memory</div>
+        <button type="button" class="modal-close-btn" data-modal-close>✕</button>
+      </div>
+      <form id="add-memory-form" style="display:flex; flex-direction:column; gap:10px;">
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Title / Topic</label>
+          <input type="text" id="new-mem-title" class="command-field" required placeholder="e.g. Project Architecture Rules or API Endpoint" style="width:100%; height:32px;">
+        </div>
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Context / Memory Content</label>
+          <textarea id="new-mem-content" class="command-field" required rows="4" placeholder="Enter notes, rules, or architectural decisions readable by all coding agents..." style="width:100%; height:90px; resize:vertical;"></textarea>
+        </div>
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Origin Agent / Category</label>
+          <input type="text" id="new-mem-origin" class="command-field" value="User / Manual" style="width:100%; height:30px;">
+        </div>
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Tags (comma-separated)</label>
+          <input type="text" id="new-mem-tags" class="command-field" placeholder="architecture, guidelines, backend" style="width:100%; height:30px;">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button type="button" class="action-btn" data-modal-close>Cancel</button>
+          <button type="submit" class="action-btn btn-primary-action">Save Memory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add Cron Modal -->
+  <div class="modal-overlay" id="add-cron-modal">
+    <div class="modal-box" style="width: 95vw; max-width: 520px;">
+      <div class="modal-header">
+        <div class="modal-heading">Schedule Autonomous Agent Task</div>
+        <button type="button" class="modal-close-btn" data-modal-close>✕</button>
+      </div>
+      <form id="add-cron-form" style="display:flex; flex-direction:column; gap:10px;">
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Task Name</label>
+          <input type="text" id="new-cron-name" class="command-field" required placeholder="e.g. Nightly Dependency Check or Git Sweep" style="width:100%; height:32px;">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Target Agent / Runner</label>
+            <select id="new-cron-agent" class="command-field" style="width:100%; height:32px;">
+              <option value="bash">Standard Shell</option>
+              <option value="claude">Claude Code</option>
+              <option value="hermes">Hermes Agent</option>
+              <option value="antigravity">Antigravity</option>
+              <option value="mochi">Mochi</option>
+              <option value="codebuff">Codebuff</option>
+              <option value="crush">Crush (Charmbracelet)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Frequency Schedule</label>
+            <select id="new-cron-schedule" class="command-field" style="width:100%; height:32px;">
+              <option value="Every 15 minutes">Every 15 minutes</option>
+              <option value="Hourly">Hourly</option>
+              <option value="Every 4 hours">Every 4 hours</option>
+              <option value="Daily at 00:00">Daily</option>
+              <option value="Weekly">Weekly</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Command or Agent Prompt</label>
+          <input type="text" id="new-cron-cmd" class="command-field" required placeholder="e.g. git status -s or hermes -z 'check updates'" style="width:100%; height:32px;">
+        </div>
+        <div>
+          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Working Directory</label>
+          <input type="text" id="new-cron-cwd" class="command-field" value="/home/jewboy420" style="width:100%; height:30px;">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button type="button" class="action-btn" data-modal-close>Cancel</button>
+          <button type="submit" class="action-btn btn-primary-action">Create Scheduled Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Raycast / Linear Command Palette -->
+  <div class="palette-overlay" id="command-palette">
+    <div class="palette-modal">
+      <div class="palette-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-muted)">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="palette-input" class="palette-input" placeholder="Type an agent, action, view, or command...">
+      </div>
+      <div class="palette-results" id="palette-results"></div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="/static/js/xterm.js"></script>
+  <script src="/static/js/xterm-addon-fit.js"></script>
+  <script src="/static/js/xterm-addon-web-links.js"></script>
+  <script src="/static/js/dashboard.js?v=2.6.0"></script>
+</body>
+</html>

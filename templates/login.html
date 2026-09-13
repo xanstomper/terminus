@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sign in — {{ app_name }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#09090b">
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #09090b;
+      padding: 20px;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 340px;
+      background: #121215;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 32px 24px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    }
+    .auth-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .auth-icon {
+      width: 32px;
+      height: 32px;
+      color: #f4f4f6;
+      margin-bottom: 12px;
+    }
+    .auth-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f4f4f6;
+      letter-spacing: -0.02em;
+    }
+    .auth-subtitle {
+      font-size: 0.78rem;
+      color: #71717a;
+      margin-top: 4px;
+    }
+    .form-row {
+      margin-bottom: 14px;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.75rem;
+      color: #a1a1aa;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .form-input {
+      width: 100%;
+      background: #09090b;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: #f4f4f6;
+      font-size: 0.85rem;
+      font-family: var(--font-sans);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus {
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .btn-submit {
+      width: 100%;
+      background: #f4f4f6;
+      color: #09090b;
+      border: 1px solid #f4f4f6;
+      border-radius: 6px;
+      padding: 9px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover {
+      background: #e4e4e7;
+    }
+    .alert-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #f87171;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .auth-hint {
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      text-align: center;
+      font-size: 0.72rem;
+      color: #52525b;
+      font-family: var(--font-mono);
+    }
+    .auth-hint code {
+      color: #a1a1aa;
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="auth-header">
+      <svg class="auth-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="4 17 10 11 4 5"></polyline>
+        <line x1="12" y1="19" x2="20" y2="19"></line>
+      </svg>
+      <div class="auth-title">{{ app_name }}</div>
+      <div class="auth-subtitle">{{ app_tagline }}</div>
+    </div>
+
+    {% if error %}
+    <div class="alert-error">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form action="/api/login" method="post">
+      <div class="form-row">
+        <label class="form-label" for="username">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          class="form-input" 
+          value="admin" 
+          required 
+          autocomplete="username"
+          autocapitalize="none"
+        >
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="password">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          class="form-input" 
+          required 
+          autocomplete="current-password"
+          placeholder="••••••••"
+        >
+      </div>
+
+      <button type="submit" class="btn-submit">Sign in</button>
+    </form>
+
+    <div class="auth-hint">
+      Default credentials: <code>admin</code> / <code>terminus</code>
+    </div>
+  </div>
+</body>
+</html>
