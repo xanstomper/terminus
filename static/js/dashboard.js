@@ -933,7 +933,7 @@ document.addEventListener("DOMContentLoaded", () => {
               const monoClass = `mono-${(a.agent || 'sh').substring(0, 2).toLowerCase()}`;
               el.innerHTML = `
                 <div style="display:flex; align-items:center; gap:8px;">
-                  <span class="agent-monogram ${monoClass}" style="width:20px; height:20px; font-size:0.62rem;">${(a.agent || 'SH').substring(0, 2).toUpperCase()}</span>
+                  ${getAgentIconHtml(a.agent, 20)}
                   <div>
                     <div style="font-weight:600; font-size:0.8rem; color:var(--text-primary);">${a.title}</div>
                     <div style="font-size:0.72rem; color:var(--text-muted);">${a.details || a.path || ""}</div>
@@ -1038,10 +1038,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!sessionTranscriptModal) return;
     sessionTranscriptModal.classList.add("open");
 
-    const agentCode = (agentId || "sh").substring(0, 2).toLowerCase();
     if (transcriptMonogramEl) {
-      transcriptMonogramEl.textContent = (agentId || "SH").substring(0, 2).toUpperCase();
-      transcriptMonogramEl.className = `agent-monogram mono-${agentCode}`;
+      transcriptMonogramEl.innerHTML = `<img src="/static/img/agents/${(agentId || 'shell').toLowerCase()}.svg" class="agent-icon" alt="${escapeHtml(agentId || 'Agent')}" onerror="this.style.display='none'; this.parentElement.innerText='${(agentId || 'SH').substring(0, 2).toUpperCase()}';" />`;
+      transcriptMonogramEl.className = `agent-monogram ${getAgentMonogramClass(agentId)}`;
     }
     if (transcriptTitleEl) transcriptTitleEl.textContent = `${sessionTitle} — Conversation & Log`;
     if (transcriptMetaEl) transcriptMetaEl.textContent = `Path: ${cwd || "/home/jewboy420"} · ${isArchived ? "Archived Record" : "Active Terminal Session"}`;
@@ -1237,7 +1236,7 @@ document.addEventListener("DOMContentLoaded", () => {
         card.innerHTML = `
           <div class="session-card-header">
             <div class="session-card-info">
-              <span class="agent-monogram ${monoClass}" style="width:30px; height:30px; font-size:0.75rem; flex-shrink:0;">${(sess.agent_id || "SH").substring(0, 2).toUpperCase()}</span>
+              ${getAgentIconHtml(sess.agent_id, 28)}
               <div style="flex:1; overflow:hidden;">
                 <div class="session-title-edit-wrap">
                   <span class="session-title-text" id="title-text-${sess.id}">${escapeHtml(sess.title)}</span>
@@ -2012,7 +2011,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const monoClass = `mono-${(a.agent || 'sh').substring(0, 2).toLowerCase()}`;
         row.innerHTML = `
           <div class="activity-left">
-            <span class="agent-monogram ${monoClass}" style="width:24px; height:24px; font-size:0.68rem;">${(a.agent || 'SH').substring(0, 2).toUpperCase()}</span>
+            ${getAgentIconHtml(a.agent, 24)}
             <div>
               <div class="activity-title">${a.title}</div>
               <div class="activity-meta">
@@ -2150,7 +2149,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div>
           <div class="agent-card-top">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span class="agent-monogram ${monoClass}">${a.name.substring(0, 2).toUpperCase()}</span>
+              ${getAgentIconHtml(a.id, 28)}
               <div>
                 <div class="agent-name">${a.name}</div>
                 <div class="agent-version">${a.version || (a.installed ? "Installed" : "Not Found")}</div>
@@ -3209,7 +3208,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-copy-lan-url")?.addEventListener("click", () => {
-    navigator.clipboard.writeText("http://10.0.0.171:9120").then(() => {
+    navigator.clipboard.writeText(`http://${hostPillText.textContent}`).then(() => {
       showToast("Copied LAN address to clipboard!");
     });
   });
@@ -3447,6 +3446,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   async function initWorkspaceView() {
+    initChatWorkspaceView();
     const grid = document.getElementById("workspace-grid");
     if (!grid) return;
 
@@ -3604,7 +3604,7 @@ document.addEventListener("DOMContentLoaded", () => {
       card.innerHTML = `
         <div class="workspace-pane-header">
           <div class="pane-header-left">
-            <span class="agent-monogram ${monoClass}" style="width:18px; height:18px; font-size:0.6rem;">${monoText}</span>
+            ${getAgentIconHtml(pane.defaultAgent, 18)}
             <select class="pane-session-select" data-pane-session="${pane.id}">
               <option value="${assignedSession.id}" selected>${escapeHtml(assignedSession.title)}</option>
               <optgroup label="Switch to Active Session">
@@ -3823,6 +3823,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function getAgentMonogramClass(agentId) {
+    const raw = (agentId || "shell").toLowerCase();
     const map = {
       claude: "mono-cc",
       antigravity: "mono-ag",
@@ -3831,13 +3832,29 @@ document.addEventListener("DOMContentLoaded", () => {
       mochi: "mono-mo",
       codex: "mono-cx",
       cline: "mono-cl",
+      roo: "mono-rc",
+      aider: "mono-ai",
+      opencode: "mono-oc",
+      gemini: "mono-gm",
+      jcode: "mono-jc",
+      pi: "mono-pi",
+      codebuff: "mono-cb",
+      crush: "mono-cr",
+      goose: "mono-mo",
+      continue: "mono-cx",
+      cursor: "mono-sh",
+      kimi: "mono-cx",
+      qwen: "mono-gm",
+      openhands: "mono-he",
       shell: "mono-sh",
-      bash: "mono-sh"
+      bash: "mono-sh",
+      zsh: "mono-sh"
     };
-    return map[agentId] || "mono-sh";
+    return map[raw] || "mono-sh";
   }
 
   function getAgentMonogramText(agentId) {
+    const raw = (agentId || "shell").toLowerCase();
     const map = {
       claude: "CC",
       antigravity: "AG",
@@ -3846,10 +3863,61 @@ document.addEventListener("DOMContentLoaded", () => {
       mochi: "MO",
       codex: "CX",
       cline: "CL",
+      roo: "RC",
+      aider: "AI",
+      opencode: "OC",
+      gemini: "GM",
+      jcode: "JC",
+      pi: "PI",
+      codebuff: "CB",
+      crush: "CR",
+      goose: "GS",
+      continue: "CN",
+      cursor: "CU",
+      kimi: "KM",
+      qwen: "QW",
+      openhands: "OH",
       shell: "SH",
-      bash: "SH"
+      bash: "SH",
+      zsh: "SH"
     };
-    return map[agentId] || "SH";
+    return map[raw] || (raw.substring(0, 2).toUpperCase() || "SH");
+  }
+
+  function getAgentIconHtml(agentId, size = 18, fallbackText = null) {
+    const raw = (agentId || "shell").toLowerCase();
+    const iconMap = {
+      claude: "claude.svg",
+      hermes: "hermes.svg",
+      antigravity: "antigravity.svg",
+      agy: "antigravity.svg",
+      mochi: "mochi.svg",
+      codex: "codex.svg",
+      cline: "cline.svg",
+      jcode: "jcode.svg",
+      gemini: "gemini.svg",
+      pi: "pi.svg",
+      opencode: "opencode.svg",
+      roo: "roo.svg",
+      aider: "aider.svg",
+      kimi: "kimi.svg",
+      qwen: "qwen.svg",
+      goose: "goose.svg",
+      openhands: "openhands.svg",
+      continue: "continue.svg",
+      cursor: "cursor.svg",
+      codebuff: "codebuff.svg",
+      crush: "crush.svg",
+      shell: "shell.svg",
+      bash: "shell.svg",
+      zsh: "shell.svg"
+    };
+    const iconFile = iconMap[raw] || "shell.svg";
+    const monoClass = getAgentMonogramClass(raw);
+    const fallback = fallbackText || getAgentMonogramText(raw);
+    return `<span class="agent-monogram ${monoClass}" style="width:${size}px; height:${size}px;" title="${escapeHtml(agentId || 'Agent')}">
+      <img src="/static/img/agents/${iconFile}" class="agent-icon" alt="${escapeHtml(raw)}" onerror="this.style.display='none'; this.parentElement.innerText='${fallback}';" />
+    </span>`;
   }
 
   function openParallelDispatchModal() {
@@ -3873,7 +3941,7 @@ document.addEventListener("DOMContentLoaded", () => {
       card.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <div style="display:flex; align-items:center; gap:6px;">
-            <span class="agent-monogram ${getAgentMonogramClass(pane.defaultAgent)}" style="width:18px; height:18px; font-size:0.6rem;">${getAgentMonogramText(pane.defaultAgent)}</span>
+            ${getAgentIconHtml(pane.defaultAgent, 18)}
             <span style="font-size:0.78rem; font-weight:600; color:var(--text-primary);">${pane.title} (Pane ${idx + 1})</span>
           </div>
           <span style="font-size:0.70rem; color:var(--text-muted); font-family:var(--font-mono);">${pane.sessionId || 'session'}</span>
@@ -4112,6 +4180,645 @@ document.addEventListener("DOMContentLoaded", () => {
       if (output) output.textContent = "Error: " + e.message;
     }
   });
+
+  // --------------------------------------------------
+  // View: ChatGPT / Codex IDE & Team Leader Harness
+  // --------------------------------------------------
+  const chatState = {
+    isInitialized: false,
+    activeThreadId: null,
+    threads: [],
+    isStreaming: false,
+    currentProvider: "opencode-zen",
+    currentModel: "opencode/deepseek-v4-flash-free"
+  };
+
+  function formatChatMarkdown(text) {
+    if (!text) return "";
+    let safe = escapeHtml(text);
+    
+    // Code blocks ```lang\ncode\n```
+    safe = safe.replace(/```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+      const language = lang || 'code';
+      return `<div style="position:relative; margin:8px 0;"><div style="display:flex; justify-content:space-between; align-items:center; background:#18181c; padding:4px 10px; border-top-left-radius:6px; border-top-right-radius:6px; border:1px solid var(--border-subtle); border-bottom:none; font-size:0.68rem; color:var(--text-muted); font-family:var(--font-mono); font-weight:600;"><span>${language}</span><button type="button" class="action-btn" style="padding:1px 6px; font-size:0.65rem;" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.innerText); showToast('Code copied to clipboard');">Copy</button></div><pre style="margin:0; border-top-left-radius:0; border-top-right-radius:0;"><code>${code}</code></pre></div>`;
+    });
+
+    // Inline code
+    safe = safe.replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.08); padding:1px 4px; border-radius:3px; font-family:var(--font-mono); font-size:0.82em;">$1</code>');
+
+    // Bold
+    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+    // Action tags [ACTION:...]
+    safe = safe.replace(/\[ACTION:([a-zA-Z0-9_]+)\s+([^\]]+)\]/g, (match, action, params) => {
+      return `<div class="chat-action-card"><div class="action-card-header"><div style="display:flex; align-items:center; gap:5px;"><span class="indicator-dot" style="background:var(--accent-blue);"></span><span>AUTONOMOUS ACTION: ${escapeHtml(action)}</span></div></div><div class="action-card-body">${escapeHtml(params)}</div></div>`;
+    });
+
+    // Tool results
+    safe = safe.replace(/\[TOOL RESULT for ([^\]]+)\]:\n([\s\S]*?)(?=(\n\n|$))/g, (match, tool, result) => {
+      return `<div class="chat-action-card" style="border-color:rgba(16,185,129,0.3); background:rgba(16,185,129,0.04);"><div class="action-card-header" style="background:rgba(16,185,129,0.1); color:#34d399;"><div style="display:flex; align-items:center; gap:5px;"><span class="indicator-dot" style="background:var(--accent-emerald);"></span><span>TOOL RESULT: ${escapeHtml(tool)}</span></div></div><div class="action-card-body" style="color:#d1fae5;">${escapeHtml(result)}</div></div>`;
+    });
+
+    // Newlines
+    safe = safe.replace(/\n/g, '<br>');
+    return safe;
+  }
+
+  async function initChatWorkspaceView() {
+    if (chatState.isInitialized) return;
+    chatState.isInitialized = true;
+
+    // Mode Toggle (Chat IDE vs Terminal Matrix)
+    document.querySelectorAll("#chat-view-mode-toggle button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#chat-view-mode-toggle button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        const mode = btn.getAttribute("data-workspace-mode");
+        const chatShell = document.getElementById("chat-ide-shell");
+        const matrixCont = document.getElementById("workspace-matrix-container");
+        if (mode === "matrix") {
+          if (chatShell) chatShell.style.display = "none";
+          if (matrixCont) {
+            matrixCont.style.display = "flex";
+            setTimeout(() => fitAllWorkspacePanes(), 60);
+          }
+        } else {
+          if (chatShell) chatShell.style.display = "flex";
+          if (matrixCont) matrixCont.style.display = "none";
+        }
+      });
+    });
+
+    // Inspector toggle
+    const inspector = document.getElementById("chat-inspector");
+    document.getElementById("btn-toggle-chat-inspector")?.addEventListener("click", () => {
+      inspector?.classList.toggle("collapsed");
+    });
+    document.getElementById("btn-close-chat-inspector")?.addEventListener("click", () => {
+      inspector?.classList.add("collapsed");
+    });
+
+    // Model select
+    const modelSelect = document.getElementById("chat-active-model-select");
+    modelSelect?.addEventListener("change", (e) => {
+      const val = e.target.value;
+      const parts = val.split(":");
+      chatState.currentProvider = parts[0];
+      chatState.currentModel = parts.slice(1).join(":");
+      showToast(`Model set to: ${chatState.currentModel}`);
+    });
+
+    // New thread button
+    document.getElementById("btn-new-chat-thread")?.addEventListener("click", () => {
+      createNewChatThread();
+    });
+
+    // Starter prompts
+    document.querySelectorAll(".welcome-prompt-card").forEach(card => {
+      card.addEventListener("click", () => {
+        const prompt = card.getAttribute("data-starter");
+        const input = document.getElementById("chat-input-textarea");
+        if (input) {
+          input.value = prompt;
+          input.focus();
+          sendChatMessage();
+        }
+      });
+    });
+
+    // Textarea enter
+    const chatInput = document.getElementById("chat-input-textarea");
+    chatInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+
+    // Send button
+    document.getElementById("btn-chat-send")?.addEventListener("click", sendChatMessage);
+
+    // Attach skill button -> open GitHub Skills Modal
+    document.getElementById("btn-chat-attach-skill")?.addEventListener("click", () => {
+      openGitHubHubModal("skills");
+    });
+    document.getElementById("btn-open-github-skills-modal")?.addEventListener("click", () => {
+      openGitHubHubModal("skills");
+    });
+    document.getElementById("btn-open-github-mcps-modal")?.addEventListener("click", () => {
+      openGitHubHubModal("mcps");
+    });
+
+    // Config modal trigger
+    document.getElementById("btn-open-chat-config")?.addEventListener("click", () => {
+      document.getElementById("chat-config-modal")?.classList.add("open");
+    });
+
+    // Config form submit
+    document.getElementById("chat-config-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const p = document.getElementById("config-provider-select")?.value;
+      const url = document.getElementById("config-endpoint-url")?.value;
+      const key = document.getElementById("config-api-key")?.value;
+      const model = document.getElementById("config-model-id")?.value;
+      
+      if (p) chatState.currentProvider = p;
+      if (model) chatState.currentModel = model;
+      
+      showToast(`Configuration updated: ${chatState.currentProvider} · ${chatState.currentModel}`);
+      document.getElementById("chat-config-modal")?.classList.remove("open");
+    });
+
+    // Init subcomponents
+    initGitHubHub();
+    await loadChatThreads();
+    updateChatFleetMini();
+    populateInspectorContext();
+  }
+
+  async function loadChatThreads() {
+    try {
+      const res = await fetch("/api/chat/threads");
+      if (!res.ok) return;
+      chatState.threads = await res.json();
+      
+      if (chatState.threads.length === 0) {
+        await createNewChatThread("Autonomous Orchestrator Session");
+      } else {
+        renderChatThreads();
+        switchChatThread(chatState.threads[0].id);
+      }
+    } catch (e) {}
+  }
+
+  function renderChatThreads() {
+    const list = document.getElementById("chat-threads-list");
+    if (!list) return;
+    list.innerHTML = "";
+
+    chatState.threads.forEach(t => {
+      const el = document.createElement("div");
+      el.className = `chat-thread-item ${t.id === chatState.activeThreadId ? "active" : ""}`;
+      el.innerHTML = `
+        <span class="thread-item-title">${escapeHtml(t.title)}</span>
+        <div class="thread-item-actions">
+          <button type="button" class="action-btn icon-only" data-del-thread="${t.id}" style="height:20px; width:20px; font-size:0.65rem;" title="Delete Thread">✕</button>
+        </div>
+      `;
+
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-del-thread]")) return;
+        switchChatThread(t.id);
+      });
+
+      el.querySelector("[data-del-thread]")?.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await deleteChatThread(t.id);
+      });
+
+      list.appendChild(el);
+    });
+  }
+
+  async function createNewChatThread(title = "New Chat Session") {
+    try {
+      const res = await fetch("/api/chat/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          provider_id: chatState.currentProvider,
+          model_id: chatState.currentModel
+        })
+      });
+      if (res.ok) {
+        const thread = await res.json();
+        chatState.threads.unshift(thread);
+        renderChatThreads();
+        switchChatThread(thread.id);
+      }
+    } catch (e) {
+      showToast("Failed to create thread");
+    }
+  }
+
+  async function deleteChatThread(threadId) {
+    try {
+      const res = await fetch(`/api/chat/threads/${threadId}`, { method: "DELETE" });
+      if (res.ok) {
+        chatState.threads = chatState.threads.filter(t => t.id !== threadId);
+        renderChatThreads();
+        if (chatState.activeThreadId === threadId) {
+          if (chatState.threads.length > 0) {
+            switchChatThread(chatState.threads[0].id);
+          } else {
+            createNewChatThread();
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  async function switchChatThread(threadId) {
+    chatState.activeThreadId = threadId;
+    const thread = chatState.threads.find(t => t.id === threadId);
+    
+    const titleEl = document.getElementById("chat-active-thread-title");
+    if (titleEl && thread) titleEl.textContent = thread.title;
+
+    renderChatThreads();
+
+    const container = document.getElementById("chat-messages-container");
+    if (!container) return;
+
+    try {
+      const res = await fetch(`/api/chat/threads/${threadId}/messages`);
+      if (res.ok) {
+        const messages = await res.json();
+        renderChatMessages(messages);
+      }
+    } catch (e) {}
+  }
+
+  function renderChatMessages(messages) {
+    const container = document.getElementById("chat-messages-container");
+    if (!container) return;
+
+    const nonSystem = (messages || []).filter(m => m.role !== "system");
+    if (nonSystem.length === 0) {
+      container.innerHTML = `
+        <div class="chat-welcome-hero" id="chat-welcome-hero">
+          <div class="welcome-logo-badge">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+          </div>
+          <div class="welcome-hero-title">Terminus Team Leader Harness</div>
+          <div class="welcome-hero-desc">
+            Universal AI engineering leader. State any goal, and the Harness will autonomously select models, dispatch coding agents (Claude, Hermes, Antigravity), pull skills from GitHub, and execute tests without manual terminal input.
+          </div>
+          <div class="welcome-prompts-grid">
+            <div class="welcome-prompt-card" data-starter="Audit this repository for security vulnerabilities and race conditions, then generate patches.">
+              <div class="prompt-card-label">Security Audit & Patch</div>
+              <div class="prompt-card-sub">Dispatch Claude & Antigravity to audit code and apply surgical fixes.</div>
+            </div>
+            <div class="welcome-prompt-card" data-starter="Search GitHub for a comprehensive test-driven development skill, install it, and inject it into Hermes.">
+              <div class="prompt-card-label">Pull GitHub Skill</div>
+              <div class="prompt-card-sub">Scrape and pull live skills from GitHub repositories.</div>
+            </div>
+            <div class="welcome-prompt-card" data-starter="Design and implement a fullstack feature: schema, backend API endpoint, and UI components.">
+              <div class="prompt-card-label">Fullstack Autonomous Slice</div>
+              <div class="prompt-card-sub">Coordinate backend, database, and UI agent workers in parallel.</div>
+            </div>
+            <div class="welcome-prompt-card" data-starter="Execute the test suite, analyze failing traces, and fix broken assertions.">
+              <div class="prompt-card-label">Self-Healing Test Runner</div>
+              <div class="prompt-card-sub">Run bash test runner and iteratively repair code until 100% green.</div>
+            </div>
+          </div>
+        </div>
+      `;
+      // Re-attach starter prompt clicks
+      container.querySelectorAll(".welcome-prompt-card").forEach(card => {
+        card.addEventListener("click", () => {
+          const prompt = card.getAttribute("data-starter");
+          const input = document.getElementById("chat-input-textarea");
+          if (input) {
+            input.value = prompt;
+            input.focus();
+            sendChatMessage();
+          }
+        });
+      });
+      return;
+    }
+
+    container.innerHTML = "";
+    nonSystem.forEach(m => {
+      appendChatMessageToDOM(m.role, m.content);
+    });
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function appendChatMessageToDOM(role, content) {
+    const container = document.getElementById("chat-messages-container");
+    if (!container) return null;
+
+    // Hide welcome hero if present
+    const hero = document.getElementById("chat-welcome-hero");
+    if (hero) hero.style.display = "none";
+
+    const isUser = role === "user";
+    const row = document.createElement("div");
+    row.className = `chat-msg-row ${isUser ? "user-row" : "assistant-row"}`;
+
+    const avatar = isUser
+      ? `<div class="chat-avatar user-avatar">YOU</div>`
+      : `<div class="chat-avatar assistant-avatar">${getAgentIconHtml('claude', 18)}</div>`;
+
+    row.innerHTML = `
+      ${!isUser ? avatar : ""}
+      <div class="chat-bubble">
+        ${formatChatMarkdown(content)}
+      </div>
+      ${isUser ? avatar : ""}
+    `;
+
+    container.appendChild(row);
+    container.scrollTop = container.scrollHeight;
+    return row;
+  }
+
+  async function sendChatMessage() {
+    const input = document.getElementById("chat-input-textarea");
+    if (!input || chatState.isStreaming) return;
+
+    const message = input.value.trim();
+    if (!message) return;
+
+    input.value = "";
+    input.style.height = "auto";
+
+    // 1. Append User Bubble
+    appendChatMessageToDOM("user", message);
+
+    // 2. Append Assistant Bubble with live cursor
+    chatState.isStreaming = true;
+    const sendBtn = document.getElementById("btn-chat-send");
+    if (sendBtn) sendBtn.disabled = true;
+
+    const assistantRow = appendChatMessageToDOM("assistant", "");
+    const bubbleEl = assistantRow?.querySelector(".chat-bubble");
+    if (bubbleEl) {
+      bubbleEl.innerHTML = `<span class="indicator-dot" style="background:var(--accent-cyan); animation:blink 1s infinite;"></span> <span style="color:var(--text-muted); font-size:0.75rem;">Team Leader Harness orchestrating solution...</span>`;
+    }
+
+    let accumulatedText = "";
+
+    try {
+      const targetAgent = document.getElementById("chat-target-agent-select")?.value || "all";
+      const fullPrompt = targetAgent !== "all" ? `[@${targetAgent.toUpperCase()}]: ${message}` : message;
+
+      const res = await fetch("/api/harness/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          thread_id: chatState.activeThreadId,
+          message: fullPrompt,
+          provider_id: chatState.currentProvider,
+          model_id: chatState.currentModel
+        })
+      });
+
+      if (!res.ok) {
+        if (bubbleEl) bubbleEl.innerHTML = `<span style="color:var(--accent-rose);">Error connecting to model: HTTP ${res.status}</span>`;
+        chatState.isStreaming = false;
+        if (sendBtn) sendBtn.disabled = false;
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop(); // keep remainder
+
+        for (const block of lines) {
+          const cleanLine = block.trim();
+          if (cleanLine.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(cleanLine.substring(6));
+              if (data.type === "tool_start") {
+                const streamPane = document.getElementById("inspector-agent-stream");
+                if (streamPane) {
+                  streamPane.textContent = `[HARNESS RUNNING TOOL]: ${data.action}...\n${JSON.stringify(data.details, null, 2)}`;
+                }
+              } else if (data.type === "tool_end") {
+                const streamPane = document.getElementById("inspector-agent-stream");
+                if (streamPane) {
+                  streamPane.textContent = `[HARNESS TOOL COMPLETED]: ${data.action}\n${data.result}`;
+                }
+              } else if (data.content) {
+                accumulatedText += data.content;
+                if (bubbleEl) {
+                  bubbleEl.innerHTML = formatChatMarkdown(accumulatedText);
+                  const container = document.getElementById("chat-messages-container");
+                  if (container) container.scrollTop = container.scrollHeight;
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      if (bubbleEl) bubbleEl.innerHTML = `<span style="color:var(--accent-rose);">Streaming error: ${escapeHtml(e.message)}</span>`;
+    } finally {
+      chatState.isStreaming = false;
+      if (sendBtn) sendBtn.disabled = false;
+      updateChatFleetMini();
+    }
+  }
+
+  async function updateChatFleetMini() {
+    const box = document.getElementById("chat-fleet-mini");
+    if (!box) return;
+
+    try {
+      const res = await fetch("/api/agents");
+      if (!res.ok) return;
+      const agents = await res.json();
+
+      box.innerHTML = "";
+      agents.slice(0, 8).forEach(a => {
+        const pill = document.createElement("div");
+        pill.className = `fleet-mini-pill ${a.installed ? "running" : ""}`;
+        pill.innerHTML = `
+          ${getAgentIconHtml(a.id, 13)}
+          <span>${escapeHtml(a.name)}</span>
+        `;
+        pill.title = `${a.name}: ${a.installed ? "Installed / Ready" : "Not Found"}`;
+        box.appendChild(pill);
+      });
+    } catch (e) {}
+  }
+
+  async function populateInspectorContext() {
+    const skillsList = document.getElementById("inspector-skills-list");
+    const mcpList = document.getElementById("inspector-mcp-list");
+
+    try {
+      const [sRes, mRes] = await Promise.all([
+        fetch("/api/skills"),
+        fetch("/api/mcp")
+      ]);
+
+      if (sRes.ok && skillsList) {
+        const sData = await sRes.json();
+        const skills = (sData.skills || []).slice(0, 5);
+        skillsList.innerHTML = skills.map(s => `
+          <div class="inspector-item">
+            <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(s.title)}</span>
+            <span style="font-size:0.62rem; color:var(--accent-blue);">${s.origin}</span>
+          </div>
+        `).join("");
+      }
+
+      if (mRes.ok && mcpList) {
+        const mcps = await mRes.json();
+        mcpList.innerHTML = (mcps || []).slice(0, 4).map(m => `
+          <div class="inspector-item">
+            <span style="font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(m.name)}</span>
+            <span style="font-size:0.62rem; color:#10b981;">${m.status || "ready"}</span>
+          </div>
+        `).join("");
+      }
+    } catch (e) {}
+  }
+
+  // --------------------------------------------------
+  // GitHub Hub: Skills & MCP Scraper / Puller
+  // --------------------------------------------------
+  function initGitHubHub() {
+    let currentType = "skills";
+
+    document.querySelectorAll("#github-hub-type-toggle button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#github-hub-type-toggle button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentType = btn.getAttribute("data-hub-type");
+        searchGitHubHub(currentType, document.getElementById("github-hub-search")?.value || "");
+      });
+    });
+
+    document.getElementById("btn-github-search-run")?.addEventListener("click", () => {
+      searchGitHubHub(currentType, document.getElementById("github-hub-search")?.value || "");
+    });
+
+    document.getElementById("github-hub-search")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        searchGitHubHub(currentType, e.target.value);
+      }
+    });
+  }
+
+  function openGitHubHubModal(type = "skills") {
+    const modal = document.getElementById("github-hub-modal");
+    if (!modal) return;
+    
+    // Set active toggle
+    document.querySelectorAll("#github-hub-type-toggle button").forEach(b => {
+      b.classList.toggle("active", b.getAttribute("data-hub-type") === type);
+    });
+
+    modal.classList.add("open");
+    searchGitHubHub(type, "");
+  }
+
+  async function searchGitHubHub(type, query) {
+    const grid = document.getElementById("github-cards-grid");
+    if (!grid) return;
+    grid.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:0.8rem;">Querying GitHub &amp; community repositories...</div>`;
+
+    const endpoint = type === "skills" ? `/api/skills/github/search?q=${encodeURIComponent(query)}` : `/api/mcp/github/search?q=${encodeURIComponent(query)}`;
+
+    try {
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error("Search failed");
+      const items = await res.json();
+      renderGitHubCards(items, type);
+    } catch (e) {
+      grid.innerHTML = `<div style="text-align:center; padding:30px; color:var(--accent-rose); font-size:0.8rem;">Search error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderGitHubCards(items, type) {
+    const grid = document.getElementById("github-cards-grid");
+    if (!grid) return;
+
+    if (!items || items.length === 0) {
+      grid.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:0.8rem;">No GitHub packages found matching query.</div>`;
+      return;
+    }
+
+    grid.innerHTML = "";
+    items.forEach(item => {
+      const card = document.createElement("div");
+      card.className = "github-card";
+
+      const stars = item.stars ? `<span class="github-stars-tag">★ ${item.stars.toLocaleString()}</span>` : "";
+      const cat = item.category || "General";
+
+      card.innerHTML = `
+        <div>
+          <div class="github-card-header">
+            <span class="github-card-title">${escapeHtml(item.title || item.name)}</span>
+            ${stars}
+          </div>
+          <div style="font-size:0.65rem; color:var(--accent-blue); margin-bottom:6px; font-weight:600;">${escapeHtml(cat)} · ${escapeHtml(item.author || item.repo || 'Verified')}</div>
+          <div class="github-card-desc">${escapeHtml(item.description || '')}</div>
+        </div>
+        <div class="github-card-actions">
+          <span style="font-family:var(--font-mono); font-size:0.65rem; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; max-width:140px;">${escapeHtml(item.name)}</span>
+          <button type="button" class="action-btn btn-primary-action btn-install-gh" style="height:26px; padding:0 10px; font-size:0.72rem;">Install</button>
+        </div>
+      `;
+
+      card.querySelector(".btn-install-gh")?.addEventListener("click", async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = "Pulling...";
+
+        const target = document.getElementById("github-install-target")?.value || "all";
+
+        try {
+          if (type === "skills") {
+            const installRes = await fetch("/api/skills/github/install", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ skill_id: item.id, target })
+            });
+            if (installRes.ok) {
+              btn.textContent = "Installed!";
+              btn.style.background = "var(--accent-emerald)";
+              btn.style.color = "#000";
+              showToast(`Installed skill '${item.name}' into ${target} agents`);
+              populateInspectorContext();
+            } else {
+              btn.textContent = "Failed";
+              btn.disabled = false;
+            }
+          } else {
+            const installRes = await fetch("/api/mcp/github/install", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mcp_id: item.id })
+            });
+            if (installRes.ok) {
+              btn.textContent = "Installed!";
+              btn.style.background = "var(--accent-emerald)";
+              btn.style.color = "#000";
+              showToast(`Installed MCP server '${item.name}' into Claude & Antigravity`);
+              populateInspectorContext();
+            } else {
+              btn.textContent = "Failed";
+              btn.disabled = false;
+            }
+          }
+        } catch (err) {
+          btn.textContent = "Error";
+          btn.disabled = false;
+          showToast(`Install error: ${err.message}`);
+        }
+      });
+
+      grid.appendChild(card);
+    });
+  }
 
   boot();
 });

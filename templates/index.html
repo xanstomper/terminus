@@ -259,10 +259,193 @@
         </footer>
       </div>
 
-      <!-- ================= VIEW: LINKED MULTI-TERMINAL WORKSPACE MATRIX ================= -->
+      <!-- ================= VIEW: CHATGPT/CODEX IDE & AUTONOMOUS HARNESS WORKSPACE ================= -->
       <div id="view-workspace" class="view-panel">
-        <div class="workspace-viewport">
-          <!-- Top Bar: Workspace Controls -->
+        <div class="chat-ide-shell" id="chat-ide-shell">
+          <!-- Left Sidebar: Conversations & Fleet -->
+          <aside class="chat-sidebar" id="chat-sidebar">
+            <div class="chat-sidebar-header">
+              <button type="button" class="btn-new-chat" id="btn-new-chat-thread" title="Start a fresh chat thread">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>New Session</span>
+              </button>
+              <button type="button" class="action-btn" id="btn-open-chat-config" title="Configure LLM Model, Endpoint & API Keys" style="padding:0 8px; height:32px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Active Model Capsule -->
+            <div class="chat-model-capsule">
+              <span class="capsule-label">Active Model</span>
+              <select id="chat-active-model-select" class="ws-select chat-model-dropdown" title="Select AI Model">
+                <option value="opencode-zen:opencode/deepseek-v4-flash-free">DeepSeek V4 Flash Free (OpenCode)</option>
+                <option value="opencode-zen:opencode/deepseek-v4-flash">DeepSeek V4 Flash (Zen)</option>
+                <option value="opencode-zen:opencode/opencode-zen-3.5">OpenCode Zen 3.5</option>
+                <option value="opencode-go:opencode-go/deepseek-v4-flash">DeepSeek V4 Flash (Go)</option>
+                <option value="openai:gpt-4o">GPT-4o (OpenAI)</option>
+                <option value="anthropic:claude-sonnet-4-20250514">Claude Sonnet 4</option>
+              </select>
+            </div>
+
+            <!-- Conversation Threads List -->
+            <div class="chat-threads-container" id="chat-threads-list">
+              <!-- Dynamically populated threads -->
+            </div>
+
+            <!-- Fleet Status Box -->
+            <div class="chat-fleet-box">
+              <div class="fleet-box-title">
+                <span>Autonomous Fleet</span>
+                <span class="pulse-dot"></span>
+              </div>
+              <div class="fleet-agents-mini" id="chat-fleet-mini">
+                <!-- Dynamically populated mini status pills -->
+              </div>
+            </div>
+          </aside>
+
+          <!-- Center: Main Chat & IDE Console -->
+          <section class="chat-main-area">
+            <div class="chat-topbar">
+              <div class="chat-topbar-left">
+                <span class="chat-thread-title" id="chat-active-thread-title">New Session</span>
+                <span class="chat-mode-pill" id="chat-harness-badge" title="Team Leader AI automatically plans, calls agents, and verifies solutions">
+                  <span class="indicator-dot" style="background:var(--accent-emerald);"></span>
+                  <span>Team Leader Harness</span>
+                </span>
+              </div>
+
+              <div class="chat-topbar-right">
+                <!-- Toggle between Chat IDE and Terminal Matrix -->
+                <div class="segmented-control" id="chat-view-mode-toggle">
+                  <button type="button" class="segment-btn active" data-workspace-mode="chat" title="ChatGPT/Codex IDE Interface">
+                    <span>Chat IDE</span>
+                  </button>
+                  <button type="button" class="segment-btn" data-workspace-mode="matrix" title="Linked Multi-Terminal Matrix">
+                    <span>Terminal Matrix</span>
+                  </button>
+                </div>
+
+                <button type="button" class="action-btn" id="btn-toggle-chat-inspector" title="Toggle Context & Live Execution Drawer">
+                  <span>Inspector</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Chat Messages Container -->
+            <div class="chat-messages-container" id="chat-messages-container">
+              <!-- Welcome hero when empty -->
+              <div class="chat-welcome-hero" id="chat-welcome-hero">
+                <div class="welcome-logo-badge">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                  </svg>
+                </div>
+                <div class="welcome-hero-title">Terminus Team Leader Harness</div>
+                <div class="welcome-hero-desc">
+                  Universal AI engineering leader. State any goal, and the Harness will autonomously select models, dispatch coding agents (Claude, Hermes, Antigravity), pull skills from GitHub, and execute tests without manual terminal input.
+                </div>
+                <div class="welcome-prompts-grid">
+                  <div class="welcome-prompt-card" data-starter="Audit this repository for security vulnerabilities and race conditions, then generate patches.">
+                    <div class="prompt-card-label">Security Audit & Patch</div>
+                    <div class="prompt-card-sub">Dispatch Claude & Antigravity to audit code and apply surgical fixes.</div>
+                  </div>
+                  <div class="welcome-prompt-card" data-starter="Search GitHub for a comprehensive test-driven development skill, install it, and inject it into Hermes.">
+                    <div class="prompt-card-label">Pull GitHub Skill</div>
+                    <div class="prompt-card-sub">Scrape and pull live skills from GitHub repositories.</div>
+                  </div>
+                  <div class="welcome-prompt-card" data-starter="Design and implement a fullstack feature: schema, backend API endpoint, and UI components.">
+                    <div class="prompt-card-label">Fullstack Autonomous Slice</div>
+                    <div class="prompt-card-sub">Coordinate backend, database, and UI agent workers in parallel.</div>
+                  </div>
+                  <div class="welcome-prompt-card" data-starter="Execute the test suite, analyze failing traces, and fix broken assertions.">
+                    <div class="prompt-card-label">Self-Healing Test Runner</div>
+                    <div class="prompt-card-sub">Run bash test runner and iteratively repair code until 100% green.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Chat Input Box -->
+            <div class="chat-input-wrapper">
+              <div class="chat-input-box">
+                <textarea id="chat-input-textarea" class="chat-textarea" placeholder="Instruct the Team Leader Harness (e.g. 'Audit this repo, write tests, and fix all race conditions')..." rows="1"></textarea>
+                <div class="chat-input-actions">
+                  <div class="chat-action-left">
+                    <button type="button" class="chat-tool-btn" id="btn-chat-attach-skill" title="Attach Skill from GitHub or Local">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                      </svg>
+                      <span>Attach Skill</span>
+                    </button>
+                    <select id="chat-target-agent-select" class="ws-select" style="height:26px; font-size:0.7rem; padding:0 22px 0 6px;" title="Target Agent Fleet">
+                      <option value="all">Orchestrate All Agents</option>
+                      <option value="claude">Claude Code Only</option>
+                      <option value="hermes">Hermes Agent Only</option>
+                      <option value="antigravity">Antigravity Only</option>
+                      <option value="mochi">Mochi Only</option>
+                      <option value="shell">Direct Shell Only</option>
+                    </select>
+                  </div>
+
+                  <div class="chat-action-right">
+                    <button type="button" class="btn-chat-send" id="btn-chat-send" title="Send (Enter)">
+                      <span>Send</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Right: Context & Execution Inspector Drawer -->
+          <aside class="chat-inspector" id="chat-inspector">
+            <div class="inspector-header">
+              <span class="inspector-title">Workspace Context</span>
+              <button type="button" class="modal-close-btn" id="btn-close-chat-inspector" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.1rem;">Close</button>
+            </div>
+            
+            <div class="inspector-section">
+              <div class="inspector-section-title">Active GitHub Skills</div>
+              <div class="inspector-skills-list" id="inspector-skills-list">
+                <!-- Dynamically populated -->
+              </div>
+              <button type="button" class="action-btn" id="btn-open-github-skills-modal" style="width:100%; margin-top:8px; font-size:0.72rem;">
+                <span>Pull Skills from GitHub</span>
+              </button>
+            </div>
+
+            <div class="inspector-section">
+              <div class="inspector-section-title">MCP Tools & Servers</div>
+              <div class="inspector-mcp-list" id="inspector-mcp-list">
+                <!-- Dynamically populated -->
+              </div>
+              <button type="button" class="action-btn" id="btn-open-github-mcps-modal" style="width:100%; margin-top:8px; font-size:0.72rem;">
+                <span>Pull MCPs from GitHub</span>
+              </button>
+            </div>
+
+            <div class="inspector-section">
+              <div class="inspector-section-title">Live Agent Output Stream</div>
+              <div class="inspector-agent-stream" id="inspector-agent-stream">
+                <span style="color:var(--text-dim); font-size:0.72rem;">No active agent execution. Dispatch a task to view real-time stdout.</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <!-- Terminal Matrix (shown when toggled to matrix mode) -->
+        <div class="workspace-viewport" id="workspace-matrix-container" style="display:none; height:100%; width:100%;">
           <div class="workspace-toolbar">
             <div class="ws-tool-left">
               <span class="ws-title-label">Workspace Matrix</span>
@@ -301,12 +484,10 @@
             </div>
           </div>
 
-          <!-- Workspace Grid Container: hosts up to 4 panes -->
           <div class="workspace-grid layout-2x2" id="workspace-grid">
             <!-- Dynamically populated panes 1 to 4 -->
           </div>
 
-          <!-- Linked Input Bar for Workspace View -->
           <div class="workspace-input-strip">
             <span class="ws-input-badge" id="ws-linked-badge">LINKED (ALL PANES)</span>
             <input type="text" id="ws-linked-input" class="ws-input-field" placeholder="Broadcast command or agent prompt to all linked panes simultaneously... (Press Enter)" autocomplete="off">
@@ -507,7 +688,7 @@
               <div class="section-subtitle">Manage FreeInference & OpenCode models, Discord bot gateway, and autonomous agent loops</div>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <a href="http://10.0.0.171:9119" target="_blank" rel="noopener noreferrer" class="action-btn" style="text-decoration:none;">
+              <a href="http://{{ telemetry.lan_ip }}:9119" target="_blank" rel="noopener noreferrer" class="action-btn" style="text-decoration:none;">
                 <span>Hermes Dashboard (Port 9119) ↗</span>
               </a>
               <button class="action-btn btn-primary-action" id="btn-launch-hermes-term">Open Hermes PTY</button>
@@ -919,71 +1100,71 @@
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
         <button class="action-btn modal-agent-btn" data-quick-launch="bash" data-title="Shell" data-cmd="">
-          <span class="agent-monogram mono-sh">SH</span>
+          <span class="agent-monogram mono-sh"><img src="/static/img/agents/shell.svg" class="agent-icon" alt="Shell"></span>
           <span class="agent-btn-text">Standard Shell</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="claude" data-title="Claude" data-cmd="claude">
-          <span class="agent-monogram mono-cc">CC</span>
+          <span class="agent-monogram mono-cc"><img src="/static/img/agents/claude.svg" class="agent-icon" alt="Claude"></span>
           <span class="agent-btn-text">Claude Code</span>
         </button>
-        <button class="action-btn modal-agent-btn" data-quick-launch="hermes" data-title="Hermes" data-cmd="/home/jewboy420/hermes-env/bin/hermes">
-          <span class="agent-monogram mono-he">HE</span>
+        <button class="action-btn modal-agent-btn" data-quick-launch="hermes" data-title="Hermes" data-cmd="hermes">
+          <span class="agent-monogram mono-he"><img src="/static/img/agents/hermes.svg" class="agent-icon" alt="Hermes"></span>
           <span class="agent-btn-text">Hermes Agent</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="agy" data-title="Antigravity" data-cmd="agy">
-          <span class="agent-monogram mono-ag">AG</span>
+          <span class="agent-monogram mono-ag"><img src="/static/img/agents/antigravity.svg" class="agent-icon" alt="Antigravity"></span>
           <span class="agent-btn-text">Antigravity</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="mochi" data-title="Mochi" data-cmd="mochi">
-          <span class="agent-monogram mono-mo">MO</span>
+          <span class="agent-monogram mono-mo"><img src="/static/img/agents/mochi.svg" class="agent-icon" alt="Mochi"></span>
           <span class="agent-btn-text">Mochi</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="codex" data-title="Codex" data-cmd="codex">
-          <span class="agent-monogram mono-cx">CX</span>
+          <span class="agent-monogram mono-cx"><img src="/static/img/agents/codex.svg" class="agent-icon" alt="Codex"></span>
           <span class="agent-btn-text">Codex K</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="cline" data-title="Cline" data-cmd="cline">
-          <span class="agent-monogram mono-cl">CL</span>
+          <span class="agent-monogram mono-cl"><img src="/static/img/agents/cline.svg" class="agent-icon" alt="Cline"></span>
           <span class="agent-btn-text">Cline</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="roo" data-title="Roo Code" data-cmd="roo">
-          <span class="agent-monogram mono-cl">RC</span>
+          <span class="agent-monogram mono-rc"><img src="/static/img/agents/roo.svg" class="agent-icon" alt="Roo Code"></span>
           <span class="agent-btn-text">Roo Code</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="aider" data-title="Aider" data-cmd="aider">
-          <span class="agent-monogram mono-he">AI</span>
+          <span class="agent-monogram mono-ai"><img src="/static/img/agents/aider.svg" class="agent-icon" alt="Aider"></span>
           <span class="agent-btn-text">Aider</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="opencode" data-title="OpenCode" data-cmd="opencode">
-          <span class="agent-monogram mono-ag">OC</span>
+          <span class="agent-monogram mono-oc"><img src="/static/img/agents/opencode.svg" class="agent-icon" alt="OpenCode"></span>
           <span class="agent-btn-text">OpenCode</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="gemini" data-title="Gemini" data-cmd="gemini">
-          <span class="agent-monogram mono-cc">GM</span>
+          <span class="agent-monogram mono-gm"><img src="/static/img/agents/gemini.svg" class="agent-icon" alt="Gemini"></span>
           <span class="agent-btn-text">Gemini CLI</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="goose" data-title="Goose" data-cmd="goose session">
-          <span class="agent-monogram mono-mo">GS</span>
+          <span class="agent-monogram mono-mo"><img src="/static/img/agents/goose.svg" class="agent-icon" alt="Goose"></span>
           <span class="agent-btn-text">Goose</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="continue" data-title="Continue" data-cmd="continue">
-          <span class="agent-monogram mono-cx">CN</span>
+          <span class="agent-monogram mono-cx"><img src="/static/img/agents/continue.svg" class="agent-icon" alt="Continue"></span>
           <span class="agent-btn-text">Continue</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="cursor" data-title="Cursor" data-cmd="cursor">
-          <span class="agent-monogram mono-sh">CU</span>
+          <span class="agent-monogram mono-sh"><img src="/static/img/agents/cursor.svg" class="agent-icon" alt="Cursor"></span>
           <span class="agent-btn-text">Cursor CLI</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="jcode" data-title="J-Code" data-cmd="jcode repl">
-          <span class="agent-monogram mono-jc">JC</span>
+          <span class="agent-monogram mono-jc"><img src="/static/img/agents/jcode.svg" class="agent-icon" alt="J-Code"></span>
           <span class="agent-btn-text">J-Code</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="codebuff" data-title="Codebuff" data-cmd="codebuff">
-          <span class="agent-monogram mono-cb">CB</span>
+          <span class="agent-monogram mono-cb"><img src="/static/img/agents/codebuff.svg" class="agent-icon" alt="Codebuff"></span>
           <span class="agent-btn-text">Codebuff</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="crush" data-title="Crush" data-cmd="crush">
-          <span class="agent-monogram mono-cr">CR</span>
+          <span class="agent-monogram mono-cr"><img src="/static/img/agents/crush.svg" class="agent-icon" alt="Crush"></span>
           <span class="agent-btn-text">Crush (Charm)</span>
         </button>
       </div>
@@ -1051,7 +1232,7 @@
         <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between;">
           <div>
             <div style="font-size:0.74rem; font-weight:600; color:var(--text-secondary);">Same Wi-Fi / Local LAN</div>
-            <div style="font-size:0.70rem; color:var(--text-muted); font-family:var(--font-mono);">http://10.0.0.171:9120</div>
+            <div style="font-size:0.70rem; color:var(--text-muted); font-family:var(--font-mono);">http://{{ telemetry.lan_ip }}:{{ telemetry.port }}</div>
           </div>
           <button type="button" class="action-btn" id="btn-copy-lan-url" style="padding:2px 8px; font-size:0.70rem;">Copy LAN</button>
         </div>
@@ -1094,63 +1275,63 @@
         </div>
         <div class="session-agent-grid">
           <button type="button" class="session-agent-pill" data-quick-agent="shell" title="Interactive Shell">
-            <span class="agent-monogram mono-sh">SH</span>
+            <span class="agent-monogram mono-sh"><img src="/static/img/agents/shell.svg" class="agent-icon" alt="Shell"></span>
             <span class="agent-pill-name">Shell</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="claude" title="Claude Code">
-            <span class="agent-monogram mono-cc">CC</span>
-            <span class="agent-pill-name">Claude Code</span>
+            <span class="agent-monogram mono-cc"><img src="/static/img/agents/claude.svg" class="agent-icon" alt="Claude"></span>
+            <span class="agent-pill-name">Claude</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="hermes" title="Hermes Agent">
-            <span class="agent-monogram mono-he">HE</span>
+            <span class="agent-monogram mono-he"><img src="/static/img/agents/hermes.svg" class="agent-icon" alt="Hermes"></span>
             <span class="agent-pill-name">Hermes</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="agy" title="Antigravity">
-            <span class="agent-monogram mono-ag">AG</span>
+            <span class="agent-monogram mono-ag"><img src="/static/img/agents/antigravity.svg" class="agent-icon" alt="Antigravity"></span>
             <span class="agent-pill-name">Antigravity</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="mochi" title="Mochi">
-            <span class="agent-monogram mono-mo">MO</span>
+            <span class="agent-monogram mono-mo"><img src="/static/img/agents/mochi.svg" class="agent-icon" alt="Mochi"></span>
             <span class="agent-pill-name">Mochi</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="codex" title="Codex">
-            <span class="agent-monogram mono-cx">CX</span>
+            <span class="agent-monogram mono-cx"><img src="/static/img/agents/codex.svg" class="agent-icon" alt="Codex"></span>
             <span class="agent-pill-name">Codex</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="cline" title="Cline">
-            <span class="agent-monogram mono-cl">CL</span>
+            <span class="agent-monogram mono-cl"><img src="/static/img/agents/cline.svg" class="agent-icon" alt="Cline"></span>
             <span class="agent-pill-name">Cline</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="roo" title="Roo Code">
-            <span class="agent-monogram mono-rc">RC</span>
+            <span class="agent-monogram mono-rc"><img src="/static/img/agents/roo.svg" class="agent-icon" alt="Roo Code"></span>
             <span class="agent-pill-name">Roo Code</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="aider" title="Aider">
-            <span class="agent-monogram mono-ai">AI</span>
+            <span class="agent-monogram mono-ai"><img src="/static/img/agents/aider.svg" class="agent-icon" alt="Aider"></span>
             <span class="agent-pill-name">Aider</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="opencode" title="OpenCode">
-            <span class="agent-monogram mono-oc">OC</span>
+            <span class="agent-monogram mono-oc"><img src="/static/img/agents/opencode.svg" class="agent-icon" alt="OpenCode"></span>
             <span class="agent-pill-name">OpenCode</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="gemini" title="Gemini CLI">
-            <span class="agent-monogram mono-gm">GM</span>
+            <span class="agent-monogram mono-gm"><img src="/static/img/agents/gemini.svg" class="agent-icon" alt="Gemini"></span>
             <span class="agent-pill-name">Gemini</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="jcode" title="J-Code">
-            <span class="agent-monogram mono-jc">JC</span>
+            <span class="agent-monogram mono-jc"><img src="/static/img/agents/jcode.svg" class="agent-icon" alt="J-Code"></span>
             <span class="agent-pill-name">J-Code</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="pi" title="Pi">
-            <span class="agent-monogram mono-pi">PI</span>
+            <span class="agent-monogram mono-pi"><img src="/static/img/agents/pi.svg" class="agent-icon" alt="Pi"></span>
             <span class="agent-pill-name">Pi</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="codebuff" title="Codebuff">
-            <span class="agent-monogram mono-cb">CB</span>
+            <span class="agent-monogram mono-cb"><img src="/static/img/agents/codebuff.svg" class="agent-icon" alt="Codebuff"></span>
             <span class="agent-pill-name">Codebuff</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="crush" title="Crush (Charm)">
-            <span class="agent-monogram mono-cr">CR</span>
+            <span class="agent-monogram mono-cr"><img src="/static/img/agents/crush.svg" class="agent-icon" alt="Crush"></span>
             <span class="agent-pill-name">Crush</span>
           </button>
         </div>
@@ -1373,7 +1554,7 @@
         </div>
         <div>
           <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Working Directory</label>
-          <input type="text" id="new-cron-cwd" class="command-field" value="/home/jewboy420" style="width:100%; height:30px;">
+          <input type="text" id="new-cron-cwd" class="command-field" value="{{ home_dir }}" style="width:100%; height:30px;">
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
           <button type="button" class="action-btn" data-modal-close>Cancel</button>
@@ -1492,6 +1673,109 @@
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
           <button type="button" class="action-btn" data-modal-close>Cancel</button>
           <button type="submit" class="action-btn btn-primary-action" id="btn-ws-submit-pipe">Pipe & Execute</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- GitHub Skills & MCP Browser Modal -->
+  <div class="modal-overlay" id="github-hub-modal">
+    <div class="modal-box github-hub-modal">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge-status running" style="font-size:0.72rem; padding:2px 8px;">GITHUB HUB</span>
+          <div class="modal-heading">Pull Skills &amp; MCP Servers from GitHub</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+        <div class="segmented-control" id="github-hub-type-toggle">
+          <button type="button" class="segment-btn active" data-hub-type="skills">
+            <span>Skills Catalog</span>
+          </button>
+          <button type="button" class="segment-btn" data-hub-type="mcps">
+            <span>MCP Servers</span>
+          </button>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:0.70rem; color:var(--text-muted);">Install Target:</span>
+          <select id="github-install-target" class="ws-select" style="height:26px; font-size:0.70rem;">
+            <option value="all">All Agents (Universal)</option>
+            <option value="claude">Claude Code</option>
+            <option value="hermes">Hermes Agent</option>
+            <option value="antigravity">Antigravity</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="github-search-bar">
+        <input type="text" id="github-hub-search" class="command-field" placeholder="Search verified GitHub skills, MCP servers, repos, and topics..." style="flex:1; height:34px;">
+        <button type="button" class="action-btn btn-primary-action" id="btn-github-search-run" style="height:34px; padding:0 14px;">Search</button>
+      </div>
+
+      <div class="github-cards-grid" id="github-cards-grid">
+        <!-- Dynamically loaded cards -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat & Harness Configuration Modal -->
+  <div class="modal-overlay" id="chat-config-modal">
+    <div class="modal-box" style="width: 95vw; max-width: 540px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge-status installed" style="font-size:0.72rem; padding:2px 8px;">LLM CONFIG</span>
+          <div class="modal-heading">Model Provider &amp; API Keys</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:14px;">
+        Configure endpoint, authentication credentials, and default model for the Terminus Team Leader Harness and Chat IDE.
+      </div>
+
+      <form id="chat-config-form" style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Inference Provider</label>
+          <select id="config-provider-select" class="command-field" style="width:100%; height:32px;">
+            <option value="opencode-zen">OpenCode Zen (opencode.ai/zen/v1) — Default</option>
+            <option value="opencode-go">OpenCode Go (opencode.ai/go/v1)</option>
+            <option value="openai">OpenAI (api.openai.com/v1)</option>
+            <option value="anthropic">Anthropic (api.anthropic.com/v1)</option>
+            <option value="ollama">Ollama Local (localhost:11434/v1)</option>
+            <option value="custom">Custom Compatible Endpoint</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Endpoint Base URL</label>
+          <input type="text" id="config-endpoint-url" class="command-field" placeholder="https://opencode.ai/zen/v1" style="width:100%; height:32px;">
+        </div>
+
+        <div>
+          <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">API Key (Bearer Token)</label>
+          <input type="password" id="config-api-key" class="command-field" placeholder="sk-..." style="width:100%; height:32px;">
+        </div>
+
+        <div>
+          <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Default Model Identifier</label>
+          <input type="text" id="config-model-id" class="command-field" placeholder="opencode/deepseek-v4-flash-free" style="width:100%; height:32px;">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button type="button" class="action-btn" data-modal-close>Cancel</button>
+          <button type="submit" class="action-btn btn-primary-action" id="btn-save-chat-config">Save Configuration</button>
         </div>
       </form>
     </div>

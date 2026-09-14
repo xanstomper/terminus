@@ -20,7 +20,7 @@ from typing import Dict, Set, Optional, Any, List
 
 import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, HTTPException, Body
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -41,6 +41,10 @@ import tunnel_manager
 import communicator
 import hermes_hub
 import workspace_manager
+import chat_engine
+import github_hub
+import harness
+
 
 app = FastAPI(title="Terminus - The endpoint you can reach anywhere")
 
@@ -537,7 +541,8 @@ async def index_page(request: Request):
         "agents": all_agents,
         "auth_enabled": config.AUTH_ENABLED,
         "app_name": config.APP_NAME,
-        "app_tagline": config.APP_TAGLINE
+        "app_tagline": config.APP_TAGLINE,
+        "home_dir": str(Path.home())
     })
 
 
@@ -1456,6 +1461,245 @@ async def api_pipe_terminals(request: Request, payload: Dict[str, Any] = Body(..
 
     activity.record_activity("workspace", "terminals_piped", f"Piped {src_title} -> {dst_title}")
     return {"status": "piped", "source": src_title, "target": dst_title, "bytes_piped": len(src_snippet)}
+
+# ---------------------------------------------------------
+# Chat Engine API (ChatGPT-Style Workspace)
+# ---------------------------------------------------------
+@app.get("/api/chat/providers")
+async def api_chat_providers(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return chat_engine.get_available_providers()
+
+
+@app.get("/api/chat/threads")
+async def api_chat_threads(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return chat_engine.list_threads()
+
+
+@app.post("/api/chat/threads")
+async def api_create_chat_thread(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    thread = chat_engine.create_thread(
+        title=body.get("title", "New Chat"),
+        provider_id=body.get("provider_id", "opencode-zen"),
+        model_id=body.get("model_id", "opencode/deepseek-v4-flash-free"),
+        system_prompt=body.get("system_prompt", ""),
+    )
+    activity.record_activity("chat", "thread_created", f"Thread: {thread['title']}")
+    return thread
+
+
+@app.get("/api/chat/threads/{thread_id}")
+async def api_get_chat_thread(request: Request, thread_id: str):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    thread = chat_engine.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+
+@app.patch("/api/chat/threads/{thread_id}")
+async def api_update_chat_thread(request: Request, thread_id: str):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    thread = chat_engine.update_thread(thread_id, body)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+
+@app.delete("/api/chat/threads/{thread_id}")
+async def api_delete_chat_thread(request: Request, thread_id: str):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    if not chat_engine.delete_thread(thread_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return {"status": "deleted"}
+
+
+@app.get("/api/chat/threads/{thread_id}/messages")
+async def api_chat_messages(request: Request, thread_id: str):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return chat_engine.get_messages(thread_id)
+
+
+@app.post("/api/chat/threads/{thread_id}/messages")
+async def api_add_chat_message(request: Request, thread_id: str):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    msg = chat_engine.add_message(thread_id, body.get("role", "user"), body.get("content", ""))
+    return msg
+
+
+@app.post("/api/chat/stream")
+async def api_chat_stream(request: Request):
+    """SSE endpoint for streaming chat completions."""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    thread_id = body.get("thread_id")
+    user_message = body.get("message", "")
+    provider_id = body.get("provider_id")
+    model_id = body.get("model_id")
+
+    if not thread_id or not user_message:
+        raise HTTPException(status_code=400, detail="thread_id and message required")
+
+    thread = chat_engine.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Use thread defaults if not overridden
+    provider_id = provider_id or thread.get("provider_id", "opencode-zen")
+    model_id = model_id or thread.get("model_id", "opencode/deepseek-v4-flash-free")
+
+    # Save user message
+    chat_engine.add_message(thread_id, "user", user_message)
+
+    # Get full conversation history for context
+    messages = chat_engine.get_messages(thread_id)
+
+    async def generate():
+        full_response = []
+        async for chunk in chat_engine.stream_chat_completion(
+            provider_id=provider_id,
+            model_id=model_id,
+            messages=messages,
+            temperature=body.get("temperature", 0.7),
+            max_tokens=body.get("max_tokens", 4096),
+        ):
+            # Extract content from SSE chunk for accumulation
+            if chunk.startswith("data: "):
+                try:
+                    data = json.loads(chunk[6:].strip())
+                    if data.get("content"):
+                        full_response.append(data["content"])
+                    if data.get("done"):
+                        # Save the complete assistant response
+                        complete_text = "".join(full_response)
+                        if complete_text:
+                            chat_engine.add_message(thread_id, "assistant", complete_text)
+                except Exception:
+                    pass
+            yield chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@app.post("/api/chat/threads/{thread_id}/retry")
+async def api_chat_retry(request: Request, thread_id: str):
+    """Remove last assistant message and re-generate."""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    messages = chat_engine.get_messages(thread_id)
+    # Find and remove last assistant message
+    if messages and messages[-1].get("role") == "assistant":
+        chat_engine.delete_messages_after(thread_id, messages[-2]["id"] if len(messages) > 1 else messages[-1]["id"])
+    return {"status": "ready_for_retry"}
+
+
+@app.post("/api/chat/threads/{thread_id}/abort")
+async def api_chat_abort(request: Request, thread_id: str):
+    """Abort signal (for future use with cancellable streams)."""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return {"status": "abort_requested"}
+
+
+# ---------------------------------------------------------
+# Team Leader Harness & GitHub Hub APIs
+# ---------------------------------------------------------
+@app.post("/api/harness/stream")
+async def api_harness_stream(request: Request):
+    """Autonomous Team Leader Harness multi-agent execution loop with streaming SSE."""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    thread_id = body.get("thread_id")
+    message = body.get("message", "")
+    provider_id = body.get("provider_id", "opencode-zen")
+    model_id = body.get("model_id", "opencode/deepseek-v4-flash-free")
+    temperature = body.get("temperature", 0.6)
+
+    if not thread_id or not message:
+        raise HTTPException(status_code=400, detail="thread_id and message required")
+
+    return StreamingResponse(
+        harness.stream_harness_turn(
+            thread_id=thread_id,
+            user_message=message,
+            provider_id=provider_id,
+            model_id=model_id,
+            temperature=temperature
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@app.get("/api/skills/github/search")
+async def api_github_skills_search(request: Request, q: str = "", category: str = "all"):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return await github_hub.search_github_skills(q, category)
+
+
+@app.post("/api/skills/github/install")
+async def api_github_skills_install(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    skill_id = body.get("skill_id", "")
+    target = body.get("target", "all")
+    if not skill_id:
+        raise HTTPException(status_code=400, detail="skill_id required")
+    res = await github_hub.install_github_skill(skill_id, target)
+    skills_manager.scan_all_skills(force=True)  # Refresh skills cache
+    return res
+
+
+@app.get("/api/mcp/github/search")
+async def api_github_mcp_search(request: Request, q: str = ""):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return github_hub.search_github_mcps(q)
+
+
+@app.post("/api/mcp/github/install")
+async def api_github_mcp_install(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    mcp_id = body.get("mcp_id", "")
+    env = body.get("env", {})
+    if not mcp_id:
+        raise HTTPException(status_code=400, detail="mcp_id required")
+    try:
+        res = github_hub.install_github_mcp(mcp_id, env)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ---------------------------------------------------------
