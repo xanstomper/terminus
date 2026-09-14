@@ -642,6 +642,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (viewId === "view-terminal") {
         safeFitActiveTab();
         ensureKeyboardFocus();
+      } else if (viewId === "view-workspace") {
+        initWorkspaceView();
       } else if (viewId === "view-dashboard") {
         loadDashboardView();
       } else if (viewId === "view-communicator") {
@@ -1257,12 +1259,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 <button class="action-btn" data-transcript-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="View conversation & logs">Transcript</button>
                 <button class="action-btn" data-duplicate-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="Duplicate session">Clone</button>
                 <button class="action-btn" data-export-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="Download transcript log">Export</button>
-                ${activeSessions.length > 1 ? `<button class="action-btn" data-kill-sid="${sess.id}" style="padding:3px 7px; font-size:0.74rem; color:var(--accent-rose);" title="Close tab">✕</button>` : ""}
+                ${activeSessions.length > 1 ? `<button class="action-btn" data-kill-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem; color:var(--accent-rose);" title="Close tab">Close</button>` : ""}
               ` : `
-                <button class="action-btn btn-primary-action" data-relaunch-sid="${sess.id}" style="padding:3px 10px; font-size:0.74rem;">⚡ Relaunch</button>
+                <button class="action-btn btn-primary-action" data-relaunch-sid="${sess.id}" style="padding:3px 10px; font-size:0.74rem;">Relaunch</button>
                 <button class="action-btn" data-transcript-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="View past conversation">Conversation</button>
                 <button class="action-btn" data-export-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem;" title="Download past transcript">Export</button>
-                <button class="action-btn" data-delete-history-sid="${sess.id}" style="padding:3px 7px; font-size:0.74rem; color:var(--text-muted);" title="Delete from history">✕</button>
+                <button class="action-btn" data-delete-history-sid="${sess.id}" style="padding:3px 8px; font-size:0.74rem; color:var(--text-muted);" title="Delete from history">Delete</button>
               `}
             </div>
           </div>
@@ -1601,12 +1603,12 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="skill-desc">${s.description}</div>
             <div class="skill-tags-row">
               ${(s.tags || []).slice(0, 4).map(t => `<span class="skill-tag">#${t}</span>`).join('')}
-              ${s.scripts && s.scripts.length > 0 ? `<span class="skill-tag" style="background:rgba(59,130,246,0.15); color:var(--accent-blue);">⚡ ${s.scripts.length} script${s.scripts.length > 1 ? 's' : ''}</span>` : ''}
+              ${s.scripts && s.scripts.length > 0 ? `<span class="skill-tag" style="background:rgba(59,130,246,0.15); color:var(--accent-blue);">${s.scripts.length} script${s.scripts.length > 1 ? 's' : ''}</span>` : ''}
             </div>
           </div>
           <div class="skill-card-actions">
             <button class="action-btn btn-primary-action" data-inspect-skill="${s.id}" style="padding:3px 8px; font-size:0.72rem; flex:1;">Inspect</button>
-            <button class="action-btn" data-inject-skill="${s.id}" style="padding:3px 8px; font-size:0.72rem;" title="Inject into active terminal tab">⚡ Inject</button>
+            <button class="action-btn" data-inject-skill="${s.id}" style="padding:3px 8px; font-size:0.72rem;" title="Inject into active terminal tab">Inject</button>
           </div>
         `;
 
@@ -1798,7 +1800,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="memory-title">${m.title}</div>
                 <div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">${m.agent_origin} · ${m.time_str}</div>
               </div>
-              <button class="action-btn" style="padding:2px 6px; font-size:0.68rem; color:var(--accent-rose);" data-delete-mem="${m.id}" title="Delete memory">✕</button>
+              <button class="action-btn" style="padding:2px 6px; font-size:0.68rem; color:var(--accent-rose);" data-delete-mem="${m.id}" title="Delete memory">Delete</button>
             </div>
             <div class="memory-content">${m.content}</div>
           </div>
@@ -1914,8 +1916,8 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <div class="cron-controls">
             <button class="action-btn ${toggleBtnClass}" style="padding:4px 10px; font-size:0.75rem;" data-toggle-cron="${j.id}">${toggleBtnText}</button>
-            <button class="action-btn btn-primary-action" style="padding:4px 10px; font-size:0.75rem;" data-run-cron="${j.id}">Run Now ⚡</button>
-            <button class="action-btn" style="padding:4px 8px; font-size:0.75rem; color:var(--accent-rose);" data-delete-cron="${j.id}">✕</button>
+            <button class="action-btn btn-primary-action" style="padding:4px 10px; font-size:0.75rem;" data-run-cron="${j.id}">Run Now</button>
+            <button class="action-btn" style="padding:4px 8px; font-size:0.75rem; color:var(--accent-rose);" data-delete-cron="${j.id}">Delete</button>
           </div>
         `;
 
@@ -2690,6 +2692,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const paletteResults = document.getElementById("palette-results");
 
   const PALETTE_COMMANDS = [
+    { title: "Linked Multi-Terminal Workspace Matrix", cat: "Views", action: () => switchView("view-workspace") },
+    { title: "Multi-Agent Orchestrator & Broadcast", cat: "Views", action: () => switchView("view-communicator") },
     { title: "Control Plane Overview (Dashboard)", cat: "Views", action: () => switchView("view-dashboard") },
     { title: "Open Terminal (Persistent PTY)", cat: "Views", action: () => switchView("view-terminal") },
     { title: "Session Switcher & Process Manager", cat: "Terminal", action: openSessionPicker },
@@ -3217,9 +3221,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadCommunicatorView() {
     try {
-      const [histRes, presRes] = await Promise.all([
+      const [histRes, presRes, pipeRes] = await Promise.all([
         fetch("/api/communicator/history"),
-        fetch("/api/communicator/presets")
+        fetch("/api/communicator/presets"),
+        fetch("/api/communicator/pipelines")
       ]);
 
       // Render presets
@@ -3232,7 +3237,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "comm-preset-btn";
-            btn.innerHTML = `<span>${p.icon}</span> <span>${escapeHtml(p.title)}</span>`;
+            btn.innerHTML = `<span class="badge-status installed" style="font-size:0.65rem; padding:1px 5px;">[${p.badge || "DIRECTIVE"}]</span> <span>${escapeHtml(p.title)}</span>`;
             btn.addEventListener("click", () => {
               const input = document.getElementById("comm-prompt-input");
               if (input) {
@@ -3241,6 +3246,38 @@ document.addEventListener("DOMContentLoaded", () => {
               }
             });
             presetGrid.appendChild(btn);
+          });
+        }
+      }
+
+      // Render Collaborative Multi-Agent Pipelines
+      if (pipeRes.ok) {
+        const pipeData = await pipeRes.json();
+        const pipeGrid = document.getElementById("comm-pipeline-grid");
+        if (pipeGrid) {
+          pipeGrid.innerHTML = "";
+          (pipeData.pipelines || []).forEach(pipe => {
+            const card = document.createElement("div");
+            card.className = "comm-pipeline-card";
+            const stepsHtml = (pipe.stages || []).map(s => `<span class="pipeline-step-badge">${s.title || s.agent}: ${escapeHtml(s.action || s.prompt || '')}</span>`).join('');
+            card.innerHTML = `
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="pipeline-title">${escapeHtml(pipe.title)}</div>
+                <button type="button" class="action-btn btn-primary-action" data-run-pipe="${pipe.id}" style="padding:2px 8px; font-size:0.70rem;">Load Pipeline</button>
+              </div>
+              <div class="pipeline-desc">${escapeHtml(pipe.description)}</div>
+              <div class="pipeline-steps">${stepsHtml}</div>
+            `;
+            card.querySelector("[data-run-pipe]")?.addEventListener("click", () => {
+              const firstStage = pipe.stages?.[0];
+              const input = document.getElementById("comm-prompt-input");
+              if (input && firstStage) {
+                input.value = `[PIPELINE: ${pipe.title}]\n${firstStage.action || pipe.description}`;
+                input.focus();
+                showToast(`Loaded pipeline: ${pipe.title}`);
+              }
+            });
+            pipeGrid.appendChild(card);
           });
         }
       }
@@ -3270,7 +3307,7 @@ document.addEventListener("DOMContentLoaded", () => {
     items.slice().reverse().forEach(item => {
       const card = document.createElement("div");
       card.className = "comm-msg-card";
-      const targetLabel = item.target === "all" ? "📡 ALL ACTIVE" : item.target.toUpperCase();
+      const targetLabel = item.target === "all" ? "ALL ACTIVE" : item.target.toUpperCase();
       const hasResponse = item.response && item.response.trim();
 
       card.innerHTML = `
@@ -3381,10 +3418,613 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.getElementById("btn-clear-comm-history")?.addEventListener("click", () => {
-    fetch("/api/communicator/history", { method: "DELETE" }).catch(() => {});
+    fetch("/api/communicator/clear", { method: "POST" }).catch(() => {});
     renderCommHistory([]);
     showToast("Cleared communicator history");
   });
+
+  // ==================================================
+  // LINKED MULTI-TERMINAL WORKSPACE MATRIX ENGINE
+  // ==================================================
+  const workspaceState = {
+    layout: "2x2",
+    linkAll: true,
+    isInitialized: false,
+    panes: [
+      { id: "pane-1", defaultAgent: "claude", title: "Claude Code", linked: true, sessionId: null, term: null, fitAddon: null, socket: null, container: null },
+      { id: "pane-2", defaultAgent: "antigravity", title: "Antigravity", linked: true, sessionId: null, term: null, fitAddon: null, socket: null, container: null },
+      { id: "pane-3", defaultAgent: "hermes", title: "Hermes Agent", linked: true, sessionId: null, term: null, fitAddon: null, socket: null, container: null },
+      { id: "pane-4", defaultAgent: "shell", title: "Interactive Shell", linked: true, sessionId: null, term: null, fitAddon: null, socket: null, container: null }
+    ]
+  };
+
+  const PRESET_CONFIGS = {
+    dual_coder: { layout: "1x2", agents: ["claude", "antigravity"] },
+    quad_matrix: { layout: "2x2", agents: ["claude", "antigravity", "hermes", "shell"] },
+    trio_pipeline: { layout: "1+2", agents: ["claude", "mochi", "shell"] },
+    stacked_pair: { layout: "2x1", agents: ["claude", "shell"] },
+    single_focus: { layout: "1x1", agents: ["claude"] }
+  };
+
+  async function initWorkspaceView() {
+    const grid = document.getElementById("workspace-grid");
+    if (!grid) return;
+
+    if (!workspaceState.isInitialized) {
+      workspaceState.isInitialized = true;
+      setupWorkspaceControls();
+      await renderWorkspacePanes();
+    } else {
+      setTimeout(() => fitAllWorkspacePanes(), 60);
+    }
+  }
+
+  function setupWorkspaceControls() {
+    // Layout switcher buttons
+    document.querySelectorAll("#ws-layout-btns .ws-layout-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const layout = btn.getAttribute("data-layout");
+        setWorkspaceLayout(layout);
+      });
+    });
+
+    // Preset selector dropdown
+    const presetSelect = document.getElementById("ws-preset-select");
+    presetSelect?.addEventListener("change", (e) => {
+      applyWorkspacePreset(e.target.value);
+    });
+
+    // Link All toggle button
+    const linkAllBtn = document.getElementById("btn-ws-link-all");
+    linkAllBtn?.addEventListener("click", () => {
+      workspaceState.linkAll = !workspaceState.linkAll;
+      linkAllBtn.classList.toggle("active", workspaceState.linkAll);
+      updateWorkspaceBadge();
+      showToast(workspaceState.linkAll ? "Cluster link active: input will mirror across linked panes" : "Cluster link disabled: panes isolated");
+    });
+
+    // Refit all panes button
+    document.getElementById("btn-ws-fit-all")?.addEventListener("click", () => {
+      fitAllWorkspacePanes();
+      showToast("Refit all workspace panes");
+    });
+
+    // Parallel Dispatch Modal triggers
+    document.getElementById("btn-ws-open-dispatch")?.addEventListener("click", openParallelDispatchModal);
+    document.getElementById("btn-ws-execute-dispatch")?.addEventListener("click", executeParallelDispatch);
+
+    // Pipe Output Modal triggers
+    document.getElementById("btn-ws-open-pipe")?.addEventListener("click", () => openPipeModal());
+    document.getElementById("ws-pipe-form")?.addEventListener("submit", executePipe);
+
+    // Linked Input Bar
+    const linkedInput = document.getElementById("ws-linked-input");
+    const linkedSend = document.getElementById("btn-ws-linked-send");
+
+    const broadcastInput = () => {
+      const val = (linkedInput?.value || "").trim();
+      if (!val) return;
+      broadcastToLinkedPanes(val + "\n");
+      linkedInput.value = "";
+    };
+
+    linkedSend?.addEventListener("click", broadcastInput);
+    linkedInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        broadcastInput();
+      }
+    });
+
+    // Strategy template buttons in Parallel Dispatch Modal
+    document.querySelectorAll(".ws-dispatch-preset").forEach(btn => {
+      btn.addEventListener("click", () => {
+        applyDispatchTemplate(btn.getAttribute("data-template"));
+      });
+    });
+  }
+
+  function setWorkspaceLayout(layout) {
+    workspaceState.layout = layout;
+    const grid = document.getElementById("workspace-grid");
+    if (!grid) return;
+
+    const cssClass = layout === "1+2" ? "layout-1-2" : `layout-${layout}`;
+    grid.className = `workspace-grid ${cssClass}`;
+
+    document.querySelectorAll("#ws-layout-btns .ws-layout-btn").forEach(b => {
+      b.classList.toggle("active", b.getAttribute("data-layout") === layout);
+    });
+
+    let maxVisible = 4;
+    if (layout === "1x1") maxVisible = 1;
+    else if (layout === "1x2" || layout === "2x1") maxVisible = 2;
+    else if (layout === "1+2") maxVisible = 3;
+    else if (layout === "2x2") maxVisible = 4;
+
+    workspaceState.panes.forEach((pane, idx) => {
+      const paneEl = document.getElementById(`ws-pane-card-${pane.id}`);
+      if (paneEl) {
+        paneEl.style.display = idx < maxVisible ? "flex" : "none";
+      }
+    });
+
+    updateWorkspaceBadge();
+    setTimeout(() => fitAllWorkspacePanes(), 70);
+  }
+
+  function applyWorkspacePreset(presetKey) {
+    const cfg = PRESET_CONFIGS[presetKey];
+    if (!cfg) return;
+    setWorkspaceLayout(cfg.layout);
+    cfg.agents.forEach((ag, idx) => {
+      if (workspaceState.panes[idx]) {
+        workspaceState.panes[idx].defaultAgent = ag;
+      }
+    });
+    showToast(`Applied preset: ${presetKey.replace('_', ' ').toUpperCase()}`);
+  }
+
+  async function renderWorkspacePanes() {
+    const grid = document.getElementById("workspace-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    let activeSessionsList = [];
+    try {
+      const res = await fetch("/api/sessions");
+      if (res.ok) {
+        const d = await res.json();
+        activeSessionsList = d.sessions || [];
+      }
+    } catch (e) {}
+
+    for (let i = 0; i < workspaceState.panes.length; i++) {
+      const pane = workspaceState.panes[i];
+      const card = document.createElement("div");
+      card.className = `workspace-pane ${pane.linked ? "linked" : ""}`;
+      card.id = `ws-pane-card-${pane.id}`;
+
+      let assignedSession = null;
+      const match = activeSessionsList.find(s => s.agent_id === pane.defaultAgent || s.title?.toLowerCase().includes(pane.defaultAgent));
+      if (match) {
+        assignedSession = match;
+      } else {
+        assignedSession = {
+          id: `ws-${pane.defaultAgent}-${Date.now().toString().slice(-4)}-${i+1}`,
+          title: pane.title,
+          agent_id: pane.defaultAgent
+        };
+      }
+      pane.sessionId = assignedSession.id;
+
+      const monoClass = getAgentMonogramClass(pane.defaultAgent);
+      const monoText = getAgentMonogramText(pane.defaultAgent);
+
+      card.innerHTML = `
+        <div class="workspace-pane-header">
+          <div class="pane-header-left">
+            <span class="agent-monogram ${monoClass}" style="width:18px; height:18px; font-size:0.6rem;">${monoText}</span>
+            <select class="pane-session-select" data-pane-session="${pane.id}">
+              <option value="${assignedSession.id}" selected>${escapeHtml(assignedSession.title)}</option>
+              <optgroup label="Switch to Active Session">
+                ${activeSessionsList.map(s => `<option value="${s.id}">${escapeHtml(s.title)}</option>`).join('')}
+              </optgroup>
+              <optgroup label="Launch New Agent Tab">
+                <option value="NEW:claude">+ Launch Claude Code</option>
+                <option value="NEW:antigravity">+ Launch Antigravity</option>
+                <option value="NEW:hermes">+ Launch Hermes</option>
+                <option value="NEW:mochi">+ Launch Mochi</option>
+                <option value="NEW:codex">+ Launch Codex</option>
+                <option value="NEW:cline">+ Launch Cline</option>
+                <option value="NEW:shell">+ Launch Shell</option>
+              </optgroup>
+            </select>
+            <span class="indicator-dot" style="width:6px; height:6px; background:var(--accent-emerald);"></span>
+          </div>
+          <div class="pane-header-right">
+            <button type="button" class="action-btn pane-link-btn ${pane.linked ? "btn-primary-action" : ""}" data-pane-link="${pane.id}" style="padding:1px 7px; font-size:0.68rem;" title="Toggle input clustering for this pane">
+              ${pane.linked ? "Linked" : "Unlinked"}
+            </button>
+            <button type="button" class="action-btn" data-pane-pipe="${pane.id}" style="padding:1px 6px; font-size:0.68rem;" title="Pipe this pane output to another agent">Pipe →</button>
+            <button type="button" class="action-btn" data-pane-clear="${pane.id}" style="padding:1px 6px; font-size:0.68rem;" title="Clear pane buffer">Clear</button>
+            <button type="button" class="action-btn" data-pane-max="${pane.id}" style="padding:1px 6px; font-size:0.68rem;" title="Maximize / Restore pane">Max</button>
+          </div>
+        </div>
+        <div class="workspace-pane-body" id="ws-pane-body-${pane.id}"></div>
+      `;
+
+      grid.appendChild(card);
+
+      const linkBtn = card.querySelector(`[data-pane-link="${pane.id}"]`);
+      linkBtn?.addEventListener("click", () => {
+        pane.linked = !pane.linked;
+        card.classList.toggle("linked", pane.linked);
+        linkBtn.classList.toggle("btn-primary-action", pane.linked);
+        linkBtn.textContent = pane.linked ? "Linked" : "Unlinked";
+        updateWorkspaceBadge();
+      });
+
+      card.querySelector(`[data-pane-pipe="${pane.id}"]`)?.addEventListener("click", () => {
+        openPipeModal(pane.sessionId);
+      });
+
+      card.querySelector(`[data-pane-clear="${pane.id}"]`)?.addEventListener("click", () => {
+        if (pane.term) pane.term.clear();
+      });
+
+      const maxBtn = card.querySelector(`[data-pane-max="${pane.id}"]`);
+      maxBtn?.addEventListener("click", () => {
+        const isMax = card.classList.toggle("maximized");
+        maxBtn.textContent = isMax ? "Restore" : "Max";
+        setTimeout(() => fitPane(pane), 50);
+      });
+
+      const sessSelect = card.querySelector(`[data-pane-session="${pane.id}"]`);
+      sessSelect?.addEventListener("change", async (e) => {
+        const val = e.target.value;
+        if (val.startsWith("NEW:")) {
+          const newAgent = val.split(":")[1];
+          const tab = createTab(newAgent.toUpperCase(), null, null, newAgent);
+          pane.sessionId = tab.id;
+          pane.defaultAgent = newAgent;
+          connectPaneWebSocket(pane, tab.id);
+        } else {
+          pane.sessionId = val;
+          connectPaneWebSocket(pane, val);
+        }
+      });
+
+      const bodyEl = card.querySelector(`#ws-pane-body-${pane.id}`);
+      mountPaneTerminal(pane, bodyEl);
+    }
+
+    setWorkspaceLayout(workspaceState.layout);
+  }
+
+  function mountPaneTerminal(pane, container) {
+    if (pane.term) {
+      try { pane.term.dispose(); } catch (e) {}
+    }
+    container.innerHTML = "";
+
+    const term = new Terminal({
+      cursorBlink: true,
+      cursorStyle: "bar",
+      cursorWidth: 2,
+      fontSize: 12,
+      lineHeight: 1.08,
+      letterSpacing: 0,
+      fontFamily: '"JetBrains Mono", "Cascadia Code", "Fira Code", monospace',
+      theme: {
+        background: "#09090b",
+        foreground: "#f4f4f6",
+        cursor: "#22d3ee",
+        selectionBackground: "rgba(6, 182, 212, 0.25)"
+      },
+      allowTransparency: true,
+      scrollback: 5000
+    });
+
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(container);
+
+    pane.term = term;
+    pane.fitAddon = fitAddon;
+    pane.container = container;
+
+    term.onData(data => {
+      sendPaneInput(pane, data);
+    });
+
+    container.addEventListener("click", () => {
+      document.querySelectorAll(".workspace-pane").forEach(p => p.classList.remove("active-focus"));
+      document.getElementById(`ws-pane-card-${pane.id}`)?.classList.add("active-focus");
+      term.focus();
+    });
+
+    connectPaneWebSocket(pane, pane.sessionId);
+  }
+
+  function connectPaneWebSocket(pane, sessionId) {
+    if (!sessionId) return;
+    if (pane.socket) {
+      try { pane.socket.close(); } catch (e) {}
+    }
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/terminal/${encodeURIComponent(sessionId)}`;
+    let ws = null;
+
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+      pane.socket = ws;
+    } catch (e) {
+      return;
+    }
+
+    ws.onopen = () => {
+      fitPane(pane);
+    };
+
+    ws.onmessage = (event) => {
+      if (!pane.term) return;
+      if (event.data instanceof ArrayBuffer) {
+        pane.term.write(new Uint8Array(event.data));
+      } else if (typeof event.data === "string") {
+        if (!event.data.startsWith("{") || !event.data.endsWith("}")) {
+          pane.term.write(event.data);
+        }
+      }
+    };
+
+    ws.onerror = () => {};
+    ws.onclose = () => {};
+  }
+
+  function sendPaneInput(sourcePane, data) {
+    if (sourcePane.socket && sourcePane.socket.readyState === WebSocket.OPEN) {
+      sourcePane.socket.send(data);
+    }
+
+    if (workspaceState.linkAll && sourcePane.linked) {
+      workspaceState.panes.forEach(p => {
+        if (p.id !== sourcePane.id && p.linked && p.socket && p.socket.readyState === WebSocket.OPEN) {
+          p.socket.send(data);
+        }
+      });
+    }
+  }
+
+  function broadcastToLinkedPanes(text) {
+    let sentCount = 0;
+    workspaceState.panes.forEach(p => {
+      if (p.linked && p.socket && p.socket.readyState === WebSocket.OPEN) {
+        p.socket.send(text);
+        sentCount++;
+      }
+    });
+    showToast(`Broadcast sent to ${sentCount} linked pane${sentCount !== 1 ? 's' : ''}`);
+  }
+
+  function fitPane(pane) {
+    if (!pane || !pane.fitAddon || !pane.term || !pane.container) return;
+    try {
+      pane.fitAddon.fit();
+      if (pane.socket && pane.socket.readyState === WebSocket.OPEN) {
+        pane.socket.send(JSON.stringify({
+          type: "resize",
+          cols: pane.term.cols,
+          rows: pane.term.rows
+        }));
+      }
+    } catch (e) {}
+  }
+
+  function fitAllWorkspacePanes() {
+    workspaceState.panes.forEach(p => fitPane(p));
+  }
+
+  function updateWorkspaceBadge() {
+    const badge = document.getElementById("ws-linked-badge");
+    if (!badge) return;
+    if (!workspaceState.linkAll) {
+      badge.textContent = "ISOLATED (CLUSTER OFF)";
+      badge.style.color = "var(--text-muted)";
+      badge.style.borderColor = "var(--border-subtle)";
+      return;
+    }
+    const linkedCount = workspaceState.panes.filter(p => p.linked).length;
+    badge.textContent = `LINKED (${linkedCount} PANES)`;
+    badge.style.color = "var(--accent-cyan)";
+    badge.style.borderColor = "rgba(6, 182, 212, 0.4)";
+  }
+
+  function getAgentMonogramClass(agentId) {
+    const map = {
+      claude: "mono-cc",
+      antigravity: "mono-ag",
+      agy: "mono-ag",
+      hermes: "mono-he",
+      mochi: "mono-mo",
+      codex: "mono-cx",
+      cline: "mono-cl",
+      shell: "mono-sh",
+      bash: "mono-sh"
+    };
+    return map[agentId] || "mono-sh";
+  }
+
+  function getAgentMonogramText(agentId) {
+    const map = {
+      claude: "CC",
+      antigravity: "AG",
+      agy: "AG",
+      hermes: "HE",
+      mochi: "MO",
+      codex: "CX",
+      cline: "CL",
+      shell: "SH",
+      bash: "SH"
+    };
+    return map[agentId] || "SH";
+  }
+
+  function openParallelDispatchModal() {
+    const modal = document.getElementById("workspace-dispatch-modal");
+    const list = document.getElementById("ws-dispatch-panes-list");
+    if (!modal || !list) return;
+
+    list.innerHTML = "";
+    const activePanes = workspaceState.panes.filter(p => {
+      const el = document.getElementById(`ws-pane-card-${p.id}`);
+      return el && el.style.display !== "none";
+    });
+
+    activePanes.forEach((pane, idx) => {
+      const card = document.createElement("div");
+      card.style.background = "var(--bg-surface)";
+      card.style.border = "1px solid var(--border-subtle)";
+      card.style.borderRadius = "6px";
+      card.style.padding = "10px 12px";
+
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="agent-monogram ${getAgentMonogramClass(pane.defaultAgent)}" style="width:18px; height:18px; font-size:0.6rem;">${getAgentMonogramText(pane.defaultAgent)}</span>
+            <span style="font-size:0.78rem; font-weight:600; color:var(--text-primary);">${pane.title} (Pane ${idx + 1})</span>
+          </div>
+          <span style="font-size:0.70rem; color:var(--text-muted); font-family:var(--font-mono);">${pane.sessionId || 'session'}</span>
+        </div>
+        <textarea class="command-field ws-dispatch-field" data-dispatch-pane="${pane.id}" rows="2" style="width:100%; font-size:0.76rem; resize:vertical;" placeholder="Enter instruction specifically for ${pane.title}..."></textarea>
+      `;
+      list.appendChild(card);
+    });
+
+    modal.classList.add("open");
+    const firstField = list.querySelector("textarea");
+    if (firstField) firstField.focus();
+  }
+
+  function applyDispatchTemplate(templateType) {
+    const fields = document.querySelectorAll(".ws-dispatch-field");
+    if (fields.length === 0) return;
+
+    if (templateType === "consensus") {
+      fields.forEach((f) => {
+        f.value = `Synthesize an independent implementation strategy and solve the core logic for the specified objective. Compare edge cases and code structures.`;
+      });
+    } else if (templateType === "fullstack") {
+      if (fields[0]) fields[0].value = "Design the REST API endpoints, schemas, and data models for this feature.";
+      if (fields[1]) fields[1].value = "Construct the interactive user interface, reactive state, and styling for this feature.";
+      if (fields[2]) fields[2].value = "Implement integration tests and verification checks for both endpoints and UI.";
+      if (fields[3]) fields[3].value = "Review documentation, write unit tests, and verify system performance.";
+    } else if (templateType === "audit_fix") {
+      if (fields[0]) fields[0].value = "Audit recent git diffs and error logs for vulnerabilities, defects, and bugs.";
+      if (fields[1]) fields[1].value = "Implement precise patches addressing the findings from the audit.";
+      if (fields[2]) fields[2].value = "Run unit test suites and verify patch stability.";
+      if (fields[3]) fields[3].value = "Generate git commit message and format summary.";
+    } else if (templateType === "broadcast") {
+      const firstVal = fields[0]?.value || "";
+      if (firstVal) {
+        fields.forEach(f => { f.value = firstVal; });
+      }
+    }
+  }
+
+  async function executeParallelDispatch() {
+    const fields = document.querySelectorAll(".ws-dispatch-field");
+    const dispatches = [];
+
+    fields.forEach(f => {
+      const paneId = f.getAttribute("data-dispatch-pane");
+      const prompt = f.value.trim();
+      const pane = workspaceState.panes.find(p => p.id === paneId);
+      if (pane && prompt) {
+        dispatches.push({
+          session_id: pane.sessionId,
+          agent: pane.defaultAgent,
+          prompt: prompt
+        });
+      }
+    });
+
+    if (dispatches.length === 0) {
+      showToast("Please enter at least one prompt to dispatch");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/workspaces/parallel_dispatch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dispatches })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        showToast(`Parallel dispatched to ${d.results?.length || dispatches.length} agents!`);
+        document.getElementById("workspace-dispatch-modal")?.classList.remove("open");
+      }
+    } catch (e) {
+      showToast("Parallel dispatch failed: " + e.message);
+    }
+  }
+
+  function openPipeModal(preselectedSourceId = null) {
+    const modal = document.getElementById("workspace-pipe-modal");
+    const srcSelect = document.getElementById("ws-pipe-source");
+    const dstSelect = document.getElementById("ws-pipe-target");
+    if (!modal || !srcSelect || !dstSelect) return;
+
+    srcSelect.innerHTML = "";
+    dstSelect.innerHTML = "";
+
+    const activePanes = workspaceState.panes.filter(p => {
+      const el = document.getElementById(`ws-pane-card-${p.id}`);
+      return el && el.style.display !== "none";
+    });
+
+    activePanes.forEach((p, idx) => {
+      const isSelectedSrc = preselectedSourceId ? p.sessionId === preselectedSourceId : idx === 0;
+      const isSelectedDst = preselectedSourceId ? p.sessionId !== preselectedSourceId : idx === 1;
+
+      const optSrc = document.createElement("option");
+      optSrc.value = p.sessionId;
+      optSrc.textContent = `${p.title} (${p.sessionId})`;
+      if (isSelectedSrc) optSrc.selected = true;
+      srcSelect.appendChild(optSrc);
+
+      const optDst = document.createElement("option");
+      optDst.value = p.sessionId;
+      optDst.textContent = `${p.title} (${p.sessionId})`;
+      if (isSelectedDst) optDst.selected = true;
+      dstSelect.appendChild(optDst);
+    });
+
+    modal.classList.add("open");
+  }
+
+  async function executePipe(e) {
+    if (e) e.preventDefault();
+    const src = document.getElementById("ws-pipe-source")?.value;
+    const dst = document.getElementById("ws-pipe-target")?.value;
+    const lines = parseInt(document.getElementById("ws-pipe-lines")?.value || "50", 10);
+    const prefix = document.getElementById("ws-pipe-prefix")?.value || "";
+
+    if (!src || !dst) {
+      showToast("Select both source and target terminals");
+      return;
+    }
+    if (src === dst) {
+      showToast("Source and target cannot be the same terminal");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/workspaces/pipe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_session_id: src,
+          target_session_id: dst,
+          lines: lines,
+          prompt_prefix: prefix
+        })
+      });
+      if (res.ok) {
+        const d = await res.json();
+        showToast(`Piped ${d.source} -> ${d.target} (${d.bytes_piped} bytes)`);
+        document.getElementById("workspace-pipe-modal")?.classList.remove("open");
+      } else {
+        const err = await res.json();
+        showToast(err.detail || "Pipe failed");
+      }
+    } catch (e) {
+      showToast("Pipe error: " + e.message);
+    }
+  }
 
   // --------------------------------------------------
   // View: Solo Hermes & Model Control Plane
@@ -3419,7 +4059,7 @@ document.addEventListener("DOMContentLoaded", () => {
               <div class="hermes-model-sub">${m.context} Context · <span style="color:#f59e0b;">${m.provider}</span></div>
             </div>
             <button type="button" class="action-btn ${isActive ? "btn-primary-action" : ""}" style="padding:4px 10px; font-size:0.72rem;">
-              ${isActive ? "Active ✓" : "Select"}
+              ${isActive ? "Active" : "Select"}
             </button>
           `;
 

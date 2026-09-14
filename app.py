@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import shlex
+import threading
 from pathlib import Path
 from typing import Dict, Set, Optional, Any, List
 
@@ -39,6 +40,7 @@ import cron_manager
 import tunnel_manager
 import communicator
 import hermes_hub
+import workspace_manager
 
 app = FastAPI(title="Terminus - The endpoint you can reach anywhere")
 
@@ -1287,6 +1289,19 @@ async def api_comm_presets(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return {"presets": communicator.DEFAULT_PRESETS}
 
+@app.get("/api/communicator/pipelines")
+async def api_comm_pipelines(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"pipelines": getattr(communicator, "DEFAULT_PIPELINES", [])}
+
+@app.post("/api/communicator/clear")
+async def api_comm_clear(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    communicator.clear_history()
+    return {"status": "cleared"}
+
 @app.post("/api/communicator/broadcast")
 async def api_comm_broadcast(request: Request, payload: Dict[str, Any] = Body(...)):
     if not is_authenticated(request):
@@ -1361,6 +1376,86 @@ async def api_hermes_model(request: Request, payload: Dict[str, Any] = Body(...)
     res = hermes_hub.set_active_model(model_id)
     activity.record_activity("hermes", "model_switched", f"Switched Hermes model to: {model_id}")
     return res
+
+
+# ---------------------------------------------------------
+# Linked Multi-Terminal Workspace & Parallel Dispatch
+# ---------------------------------------------------------
+@app.get("/api/workspaces")
+async def api_get_workspaces(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"workspaces": workspace_manager.load_workspaces()}
+
+@app.post("/api/workspaces")
+async def api_save_workspaces(request: Request, payload: Dict[str, Any] = Body(...)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    ws_list = payload.get("workspaces", [])
+    workspace_manager.save_workspaces(ws_list)
+    return {"status": "saved", "count": len(ws_list)}
+
+@app.post("/api/workspaces/parallel_dispatch")
+async def api_parallel_dispatch(request: Request, payload: Dict[str, Any] = Body(...)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    dispatches = payload.get("dispatches", [])
+    results = []
+    for item in dispatches:
+        sid = item.get("session_id")
+        prompt = item.get("prompt", "").strip()
+        agent = item.get("agent")
+        if not prompt:
+            continue
+        if sid and sid in sessions and sessions[sid].is_alive:
+            sessions[sid].write_input(prompt + "\n")
+            results.append({"session_id": sid, "title": sessions[sid].title, "status": "sent"})
+        elif agent:
+            new_sid = f"term-{int(time.time() % 10000)}-{os.urandom(2).hex()}"
+            adapter = adapters.get_agent_adapter(agent)
+            title = adapter.get("name", agent.title()) if adapter else agent.title()
+            launch_cmd = adapter.get("launch_cmd") if adapter else agent
+            s = get_or_create_session(new_sid, title=title, agent_id=agent, initial_cmd=launch_cmd)
+            def delayed_write(sess=s, p=prompt):
+                time.sleep(0.5)
+                sess.write_input(p + "\n")
+            threading.Thread(target=delayed_write, daemon=True).start()
+            results.append({"session_id": new_sid, "title": title, "status": "spawned_and_sent"})
+
+    activity.record_activity("workspace", "parallel_dispatch", f"Parallel dispatched to {len(results)} agents", details=f"Target sessions: {', '.join([r['title'] for r in results])}")
+    return {"status": "dispatched", "results": results}
+
+@app.post("/api/workspaces/pipe")
+async def api_pipe_terminals(request: Request, payload: Dict[str, Any] = Body(...)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    src_id = payload.get("source_session_id")
+    dst_id = payload.get("target_session_id")
+    prefix = payload.get("prompt_prefix", "Analyze output from linked agent session:")
+    lines_count = int(payload.get("lines", 40))
+
+    if not src_id or not dst_id:
+        raise HTTPException(status_code=400, detail="Missing source or target session ID")
+
+    src_snippet = ""
+    src_title = src_id
+    if src_id in sessions:
+        src_snippet = sessions[src_id].get_recent_snippet(lines_count).strip()
+        src_title = sessions[src_id].title
+
+    if not src_snippet:
+        raise HTTPException(status_code=400, detail="Source session has no terminal output to pipe")
+
+    pipe_prompt = f"{prefix}\n\n[OUTPUT FROM {src_title.upper()}]:\n{src_snippet}\n"
+
+    if dst_id in sessions and sessions[dst_id].is_alive:
+        sessions[dst_id].write_input(pipe_prompt + "\n")
+        dst_title = sessions[dst_id].title
+    else:
+        raise HTTPException(status_code=404, detail="Target session not active")
+
+    activity.record_activity("workspace", "terminals_piped", f"Piped {src_title} -> {dst_title}")
+    return {"status": "piped", "source": src_title, "target": dst_title, "bytes_piped": len(src_snippet)}
 
 
 # ---------------------------------------------------------

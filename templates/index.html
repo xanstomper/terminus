@@ -43,14 +43,17 @@
         <button type="button" class="nav-btn active" data-view-target="view-terminal" title="Terminal (PTY Engine)">
           <span>Terminal</span>
         </button>
+        <button type="button" class="nav-btn" data-view-target="view-workspace" title="Linked Multi-Terminal Workspace Matrix">
+          <span>Workspace</span>
+        </button>
+        <button type="button" class="nav-btn" data-view-target="view-communicator" title="Universal Multi-Agent Orchestrator & Dispatch">
+          <span>Orchestrator</span>
+        </button>
         <button type="button" class="nav-btn" data-view-target="view-dashboard" title="Control Plane Overview">
           <span>Dashboard</span>
         </button>
-        <button type="button" class="nav-btn" data-view-target="view-communicator" title="Omni-Communicator & Multi-Agent Broadcast">
-          <span>Broadcast</span>
-        </button>
-        <button type="button" class="nav-btn" data-view-target="view-hermes" title="Solo Hermes & AI Model Switcher">
-          <span>Hermes</span>
+        <button type="button" class="nav-btn" data-view-target="view-agents" title="Agent Discovery Engine">
+          <span>Agents</span>
         </button>
         <button type="button" class="nav-btn" data-view-target="view-skills" title="Universal Skill Tree & Cross-Agent Bridge">
           <span>Skills</span>
@@ -60,9 +63,6 @@
         </button>
         <button type="button" class="nav-btn" data-view-target="view-cron" title="Universal Autonomous Cron & Multi-Agent Scheduler">
           <span>Cron</span>
-        </button>
-        <button type="button" class="nav-btn" data-view-target="view-agents" title="Agent Discovery Engine">
-          <span>Agents</span>
         </button>
         <button type="button" class="nav-btn" data-view-target="view-activity" title="Live Unified Activity Stream">
           <span>Activity</span>
@@ -259,6 +259,62 @@
         </footer>
       </div>
 
+      <!-- ================= VIEW: LINKED MULTI-TERMINAL WORKSPACE MATRIX ================= -->
+      <div id="view-workspace" class="view-panel">
+        <div class="workspace-viewport">
+          <!-- Top Bar: Workspace Controls -->
+          <div class="workspace-toolbar">
+            <div class="ws-tool-left">
+              <span class="ws-title-label">Workspace Matrix</span>
+              <select id="ws-preset-select" class="ws-select" title="Switch Workspace Preset">
+                <option value="dual_coder">Dual Agent Matrix (1x2)</option>
+                <option value="quad_matrix" selected>Quad Command Matrix (2x2)</option>
+                <option value="trio_pipeline">Master & Workers Trio (1+2)</option>
+                <option value="stacked_pair">Stacked Horizontal Split (2x1)</option>
+                <option value="single_focus">Single Pane Focus (1x1)</option>
+              </select>
+              
+              <div class="ws-layout-buttons" id="ws-layout-btns">
+                <button type="button" class="ws-layout-btn" data-layout="1x1" title="Single Pane (1x1)">1x1</button>
+                <button type="button" class="ws-layout-btn" data-layout="1x2" title="Dual Vertical Split (1x2)">1x2</button>
+                <button type="button" class="ws-layout-btn" data-layout="2x1" title="Dual Horizontal Split (2x1)">2x1</button>
+                <button type="button" class="ws-layout-btn" data-layout="1+2" title="Trio Master & Workers (1+2)">1+2</button>
+                <button type="button" class="ws-layout-btn active" data-layout="2x2" title="Quad Matrix (2x2)">2x2</button>
+              </div>
+            </div>
+
+            <div class="ws-tool-right">
+              <button type="button" class="action-btn ws-link-all-btn active" id="btn-ws-link-all" title="Toggle input clustering across all linked panes">
+                <span class="indicator-dot" style="background:var(--accent-cyan);"></span>
+                <span>Link Input</span>
+              </button>
+              <button type="button" class="action-btn btn-primary-action" id="btn-ws-open-dispatch" title="Dispatch distinct prompts simultaneously to multiple agents">
+                <span>Parallel Dispatch</span>
+                <kbd>⌘↵</kbd>
+              </button>
+              <button type="button" class="action-btn" id="btn-ws-open-pipe" title="Pipe output of one terminal into another agent as context">
+                <span>Pipe Output</span>
+              </button>
+              <button type="button" class="action-btn" id="btn-ws-fit-all" title="Recalculate dimensions for all panes">
+                <span>Refit</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Workspace Grid Container: hosts up to 4 panes -->
+          <div class="workspace-grid layout-2x2" id="workspace-grid">
+            <!-- Dynamically populated panes 1 to 4 -->
+          </div>
+
+          <!-- Linked Input Bar for Workspace View -->
+          <div class="workspace-input-strip">
+            <span class="ws-input-badge" id="ws-linked-badge">LINKED (ALL PANES)</span>
+            <input type="text" id="ws-linked-input" class="ws-input-field" placeholder="Broadcast command or agent prompt to all linked panes simultaneously... (Press Enter)" autocomplete="off">
+            <button type="button" class="action-btn btn-primary-action" id="btn-ws-linked-send">Broadcast</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ================= VIEW: DASHBOARD (HOME) ================= -->
       <div id="view-dashboard" class="view-panel">
         <div class="view-content-wrap">
@@ -358,13 +414,13 @@
         </div>
       </div>
 
-      <!-- ================= VIEW: OMNI-COMMUNICATOR ================= -->
+      <!-- ================= VIEW: OMNI-COMMUNICATOR & MULTI-AGENT ORCHESTRATOR ================= -->
       <div id="view-communicator" class="view-panel">
         <div class="view-content-wrap">
           <div class="section-header">
             <div>
-              <div class="section-title">Omni-Communicator & Multi-Agent Broadcast</div>
-              <div class="section-subtitle">Dispatch prompts simultaneously to all active terminals, relay inter-agent outputs, or query Solo Hermes</div>
+              <div class="section-title">Multi-Agent Orchestrator & Broadcast</div>
+              <div class="section-subtitle">Dispatch tasks concurrently to all agents, run autonomous multi-agent pipelines, and coordinate parallel workflows</div>
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
               <button class="action-btn" id="btn-clear-comm-history">Clear History</button>
@@ -377,13 +433,15 @@
               <div style="margin-bottom: 10px;">
                 <label style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); display:block; margin-bottom:6px;">Target Destination</label>
                 <div class="comm-target-pills" id="comm-target-pills">
-                  <button type="button" class="filter-pill active" data-comm-target="all">📡 Broadcast All Active</button>
-                  <button type="button" class="filter-pill" data-comm-target="hermes_direct">⚡ Solo Hermes (Direct AI)</button>
+                  <button type="button" class="filter-pill active" data-comm-target="all">Broadcast All Active</button>
+                  <button type="button" class="filter-pill" data-comm-target="hermes_direct">Direct AI Inference</button>
                   <button type="button" class="filter-pill" data-comm-target="claude">Claude Code</button>
-                  <button type="button" class="filter-pill" data-comm-target="hermes">Hermes</button>
                   <button type="button" class="filter-pill" data-comm-target="agy">Antigravity</button>
+                  <button type="button" class="filter-pill" data-comm-target="hermes">Hermes</button>
                   <button type="button" class="filter-pill" data-comm-target="mochi">Mochi</button>
                   <button type="button" class="filter-pill" data-comm-target="codex">Codex</button>
+                  <button type="button" class="filter-pill" data-comm-target="cline">Cline</button>
+                  <button type="button" class="filter-pill" data-comm-target="jcode">J-Code</button>
                   <button type="button" class="filter-pill" data-comm-target="crush">Crush</button>
                   <button type="button" class="filter-pill" data-comm-target="shell">Shell</button>
                 </div>
@@ -391,27 +449,35 @@
 
               <!-- Fast Presets Bar -->
               <div style="margin-bottom: 12px;">
-                <label style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); display:block; margin-bottom:6px;">Quick Workflows & Actions</label>
+                <label style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); display:block; margin-bottom:6px;">Quick Presets & Directives</label>
                 <div class="comm-preset-grid" id="comm-preset-grid">
-                  <!-- Dynamically populated or rendered -->
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+
+              <!-- Multi-Agent Autonomous Pipelines -->
+              <div style="margin-bottom: 12px;">
+                <label style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); display:block; margin-bottom:6px;">Multi-Agent Collaborative Pipelines</label>
+                <div class="comm-pipeline-grid" id="comm-pipeline-grid">
+                  <!-- Dynamically populated from /api/communicator/pipelines -->
                 </div>
               </div>
 
               <!-- Prompt Input Area -->
               <div class="comm-input-wrap">
-                <textarea id="comm-prompt-input" class="comm-textarea" placeholder="Type prompt or instruction to broadcast... (Press Ctrl+Enter or Cmd+Enter to dispatch)" rows="4"></textarea>
+                <textarea id="comm-prompt-input" class="comm-textarea" placeholder="Type prompt or instruction to broadcast across agents... (Press Ctrl+Enter or Cmd+Enter to dispatch)" rows="4"></textarea>
                 <div class="comm-actions-bar">
                   <div style="font-size:0.70rem; color:var(--text-muted);">
                     Tip: <kbd>Ctrl+Enter</kbd> to dispatch immediately
                   </div>
                   <div style="display:flex; gap:8px;">
-                    <button type="button" class="action-btn" id="btn-comm-quick-hermes" title="Run direct query with Solo Hermes FreeInference model">⚡ Direct Hermes</button>
+                    <button type="button" class="action-btn" id="btn-comm-quick-hermes" title="Run direct query with AI inference model">Direct AI Query</button>
                     <button type="button" class="action-btn btn-primary-action" id="btn-comm-dispatch">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="22" y1="2" x2="11" y2="13"></line>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                       </svg>
-                      <span>Dispatch Broadcast</span>
+                      <span>Dispatch Instruction</span>
                     </button>
                   </div>
                 </div>
@@ -444,7 +510,7 @@
               <a href="http://10.0.0.171:9119" target="_blank" rel="noopener noreferrer" class="action-btn" style="text-decoration:none;">
                 <span>Hermes Dashboard (Port 9119) ↗</span>
               </a>
-              <button class="action-btn btn-primary-action" id="btn-launch-hermes-term">⚡ Open Hermes PTY</button>
+              <button class="action-btn btn-primary-action" id="btn-launch-hermes-term">Open Hermes PTY</button>
             </div>
           </div>
 
@@ -700,7 +766,9 @@
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
               <input type="text" id="project-search-input" class="projects-search-field" placeholder="Filter repositories by name, path, language... (Press / to focus)">
-              <button type="button" id="project-search-clear" class="search-clear-btn" style="display:none;">✕</button>
+              <button type="button" id="project-search-clear" class="search-clear-btn" style="display:none;" title="Clear search">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
             </div>
 
             <div class="projects-filter-group">
@@ -1148,7 +1216,7 @@
             <span>Export</span>
           </button>
           <button type="button" class="action-btn btn-primary-action" id="btn-relaunch-from-transcript" title="Relaunch this session in a live terminal tab">
-            ⚡ Open in Terminal
+            Open in Terminal
           </button>
           <button type="button" class="modal-close-btn" data-modal-close>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1194,7 +1262,7 @@
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button type="button" class="action-btn btn-primary-action" id="btn-inject-active-session" style="padding:3px 10px; font-size:0.74rem;">
-            ⚡ Inject into Active Tab
+            Inject into Active Tab
           </button>
           <button type="button" class="action-btn" id="btn-bridge-antigravity" style="padding:3px 8px; font-size:0.74rem;">
             Bridge to Antigravity
@@ -1226,7 +1294,12 @@
     <div class="modal-box" style="width: 95vw; max-width: 520px;">
       <div class="modal-header">
         <div class="modal-heading">Add Shared Cross-Agent Memory</div>
-        <button type="button" class="modal-close-btn" data-modal-close>✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
       <form id="add-memory-form" style="display:flex; flex-direction:column; gap:10px;">
         <div>
@@ -1258,7 +1331,12 @@
     <div class="modal-box" style="width: 95vw; max-width: 520px;">
       <div class="modal-header">
         <div class="modal-heading">Schedule Autonomous Agent Task</div>
-        <button type="button" class="modal-close-btn" data-modal-close>✕</button>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
       <form id="add-cron-form" style="display:flex; flex-direction:column; gap:10px;">
         <div>
@@ -1300,6 +1378,120 @@
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
           <button type="button" class="action-btn" data-modal-close>Cancel</button>
           <button type="submit" class="action-btn btn-primary-action">Create Scheduled Task</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Linked Workspace: Parallel Multi-Agent Dispatch Modal -->
+  <div class="modal-overlay" id="workspace-dispatch-modal">
+    <div class="modal-box" style="width: 95vw; max-width: 820px; max-height: 90vh; display:flex; flex-direction:column;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge-status running" style="font-size:0.72rem; padding:2px 8px;">PARALLEL DISPATCH</span>
+          <div class="modal-heading">Simultaneous Multi-Agent Instruction</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:12px;">
+        Compose distinct prompts for each active terminal pane in your linked workspace matrix, or apply a collaborative strategy template to execute across agents in parallel.
+      </div>
+
+      <!-- Quick Distribution Templates -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Collaborative Strategy Templates:</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button type="button" class="action-btn ws-dispatch-preset" data-template="consensus" style="font-size:0.73rem;">
+            [CONSENSUS] Competitive Synthesis
+          </button>
+          <button type="button" class="action-btn ws-dispatch-preset" data-template="fullstack" style="font-size:0.73rem;">
+            [FULLSTACK] API + UI + Verification
+          </button>
+          <button type="button" class="action-btn ws-dispatch-preset" data-template="audit_fix" style="font-size:0.73rem;">
+            [AUDIT/FIX] Audit + Auto-Patch + Test
+          </button>
+          <button type="button" class="action-btn ws-dispatch-preset" data-template="broadcast" style="font-size:0.73rem;">
+            [BROADCAST] Mirror to All
+          </button>
+        </div>
+      </div>
+
+      <!-- Container with dynamically populated pane cards -->
+      <div id="ws-dispatch-panes-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
+        <!-- Populated dynamically based on workspace panes -->
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border-subtle); padding-top:10px;">
+        <div style="font-size:0.72rem; color:var(--text-muted);">
+          Shortcut: <kbd>Ctrl+Enter</kbd> / <kbd>Cmd+Enter</kbd> to dispatch immediately
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="action-btn" data-modal-close>Cancel</button>
+          <button type="button" class="action-btn btn-primary-action" id="btn-ws-execute-dispatch" style="padding:6px 14px;">
+            <span>Dispatch All in Parallel</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Linked Workspace: Inter-Terminal Pipe Modal -->
+  <div class="modal-overlay" id="workspace-pipe-modal">
+    <div class="modal-box" style="width: 95vw; max-width: 620px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge-status installed" style="font-size:0.72rem; padding:2px 8px;">INTER-TERMINAL PIPE</span>
+          <div class="modal-heading">Pipe Output to Agent Context</div>
+        </div>
+        <button type="button" class="modal-close-btn" data-modal-close>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:12px;">
+        Capture recent output lines from one agent/terminal and pipe them as input or prompt context into another agent.
+      </div>
+
+      <form id="ws-pipe-form" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center;">
+          <div>
+            <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Source Terminal</label>
+            <select id="ws-pipe-source" class="command-field" style="width:100%; height:32px;"></select>
+          </div>
+          <div style="padding-top:16px; font-weight:700; color:var(--accent-cyan);">→</div>
+          <div>
+            <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Target Agent Terminal</label>
+            <select id="ws-pipe-target" class="command-field" style="width:100%; height:32px;"></select>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Lines of Buffer to Capture</label>
+          <select id="ws-pipe-lines" class="command-field" style="width:100%; height:30px;">
+            <option value="25">Recent 25 lines</option>
+            <option value="50" selected>Recent 50 lines</option>
+            <option value="100">Recent 100 lines</option>
+            <option value="200">Recent 200 lines</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:0.72rem; color:var(--text-muted); display:block; margin-bottom:4px;">Prompt Instruction Prefix</label>
+          <textarea id="ws-pipe-prefix" class="command-field" rows="2" style="width:100%; resize:vertical; font-size:0.78rem;">Analyze the output from the linked terminal session and implement any required fixes or follow-up actions:</textarea>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button type="button" class="action-btn" data-modal-close>Cancel</button>
+          <button type="submit" class="action-btn btn-primary-action" id="btn-ws-submit-pipe">Pipe & Execute</button>
         </div>
       </form>
     </div>

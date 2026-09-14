@@ -18,38 +18,71 @@ DEFAULT_PRESETS = [
     {
         "id": "code_review",
         "title": "Code Review & Security Audit",
-        "icon": "🛡️",
+        "badge": "AUDIT",
         "prompt": "Review recent git diffs, detect potential vulnerabilities, performance bottlenecks, and suggest clean architectural improvements."
     },
     {
         "id": "bug_patch",
         "title": "Bug Hunt & Auto-Patch",
-        "icon": "🐛",
+        "badge": "BUGFIX",
         "prompt": "Inspect the most recent error logs or failing tests, isolate the root cause, and implement a minimal robust fix."
     },
     {
         "id": "write_tests",
         "title": "Generate Unit & Integration Tests",
-        "icon": "🧪",
+        "badge": "TEST",
         "prompt": "Analyze untested code paths in the repository and write comprehensive, edge-case resilient tests."
     },
     {
         "id": "git_commit",
-        "title": "Smart Git Commit & Summary",
-        "icon": "🚀",
+        "title": "Smart Conventional Commit",
+        "badge": "GIT",
         "prompt": "Check git status and diff, format a standard conventional commit message, and stage modified project files."
     },
     {
         "id": "explain_arch",
         "title": "Explain System Architecture",
-        "icon": "🗺️",
+        "badge": "ARCH",
         "prompt": "Analyze the codebase structure, explain key modules, entry points, and data flows in concise markdown."
     },
     {
-        "id": "hermes_eval",
-        "title": "Hermes Autonomous Loop",
-        "icon": "⚡",
+        "id": "autonomous_loop",
+        "title": "Autonomous Work Loop",
+        "badge": "EXEC",
         "prompt": "Inspect project workspace, list pending TODOs, and autonomously implement the highest priority task."
+    }
+]
+
+
+DEFAULT_PIPELINES = [
+    {
+        "id": "audit_patch_test",
+        "title": "Audit, Patch & Verify Pipeline",
+        "description": "Sequential 3-stage agent pipeline: Claude audits -> Antigravity patches -> Shell tests",
+        "stages": [
+            {"step": 1, "agent": "claude", "title": "Claude Code", "action": "Audit codebase for defects and security vulnerabilities"},
+            {"step": 2, "agent": "antigravity", "title": "Antigravity", "action": "Implement patches and fixes based on audit findings"},
+            {"step": 3, "agent": "shell", "title": "Verification Shell", "action": "Run test suite and linters to verify patch integrity"}
+        ]
+    },
+    {
+        "id": "consensus_eval",
+        "title": "Dual-Agent Consensus",
+        "description": "Simultaneously dispatches prompt to Claude Code and Antigravity for cross-validation",
+        "stages": [
+            {"step": 1, "agent": "claude", "title": "Claude Code", "action": "Synthesize optimal implementation strategy"},
+            {"step": 1, "agent": "antigravity", "title": "Antigravity", "action": "Synthesize independent implementation strategy"}
+        ]
+    },
+    {
+        "id": "fullstack_slice",
+        "title": "Full-Stack Slice Builder",
+        "description": "Claude builds backend logic, Mochi develops UI, Shell verifies build",
+        "stages": [
+            {"step": 1, "agent": "claude", "title": "Claude Code", "action": "Design and scaffold backend endpoints & schemas"},
+            {"step": 2, "agent": "mochi", "title": "Mochi", "action": "Construct matching frontend UI components"},
+            {"step": 3, "agent": "shell", "title": "Build Shell", "action": "Compile and verify build artifacts"}
+        ]
     }
 ]
 
@@ -68,6 +101,14 @@ def save_history(history: List[Dict[str, Any]]):
     try:
         with open(COMM_HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history[-100:], f, indent=2)
+    except Exception:
+        pass
+
+
+def clear_history():
+    try:
+        with open(COMM_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
     except Exception:
         pass
 
