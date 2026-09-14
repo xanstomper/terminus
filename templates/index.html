@@ -70,6 +70,9 @@
         <button type="button" class="nav-btn" data-view-target="view-mcp" title="Universal MCP Registry">
           <span>MCP</span>
         </button>
+        <button type="button" class="nav-btn" data-view-target="view-plugins" title="Universal Plugins & Infinite MCP Hub">
+          <span>Plugins</span>
+        </button>
         <button type="button" class="nav-btn" data-view-target="view-projects" title="Git Repositories">
           <span>Projects</span>
         </button>
@@ -891,6 +894,58 @@
 
           <div class="mcp-grid" id="mcp-servers-grid">
             <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VIEW: PLUGINS ================= -->
+      <div id="view-plugins" class="view-panel">
+        <div class="view-content-wrap">
+          <div class="section-header">
+            <div>
+              <div class="section-title">Universal Plugins & Infinite MCP Hub</div>
+              <div class="section-subtitle">Search verified servers, GitHub ecosystems, and skill packs; inject them 1-click into Claude, Hermes, Antigravity, Mochi & Terminus</div>
+            </div>
+          </div>
+
+          <div class="plugin-toolbar">
+            <div class="plugin-search-box">
+              <input type="text" id="plugin-search-input" class="command-field" placeholder="Search plugins, MCP servers, skills, tools..." autocomplete="off">
+              <div class="plugin-filters">
+                <label class="plugin-filter-label">Type</label>
+                <select id="plugin-type-select" class="command-field">
+                  <option value="all">All</option>
+                  <option value="mcp">MCP Servers</option>
+                  <option value="skill">Skills</option>
+                  <option value="tool">CLI Tools</option>
+                  <option value="installed">Installed</option>
+                </select>
+                <label class="plugin-filter-label">Source</label>
+                <select id="plugin-source-select" class="command-field">
+                  <option value="all">All Sources</option>
+                  <option value="official">Official</option>
+                  <option value="github">GitHub</option>
+                  <option value="smithery">Smithery</option>
+                </select>
+                <label class="plugin-filter-label">Sort</label>
+                <select id="plugin-sort-select" class="command-field">
+                  <option value="stars">Stars</option>
+                  <option value="verified">Verified</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
+            </div>
+            <button class="action-btn" id="btn-plugins-installed">Show Installed</button>
+          </div>
+
+          <div class="plugin-status-bar" id="plugin-status-bar"></div>
+          <div class="plugin-grid" id="plugin-results-grid">
+            <div style="color:var(--text-muted); padding:24px; ">Searching the plugin universe...</div>
+          </div>
+          <div class="plugin-pagination" id="plugin-pagination">
+            <button class="action-btn plugin-page-btn" id="plugin-prev-page">← Prev</button>
+            <span id="plugin-page-info" style="font-size:0.75rem; color:var(--text-muted);"></span>
+            <button class="action-btn plugin-page-btn" id="plugin-next-page">Next →</button>
           </div>
         </div>
       </div>

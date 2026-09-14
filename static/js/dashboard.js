@@ -662,6 +662,8 @@ document.addEventListener("DOMContentLoaded", () => {
         loadActivityView();
       } else if (viewId === "view-mcp") {
         loadMcpView();
+      } else if (viewId === "view-plugins") {
+        loadPluginsView();
       } else if (viewId === "view-files") {
         loadFilesView();
       } else if (viewId === "view-projects") {
@@ -2105,6 +2107,185 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   document.getElementById("btn-refresh-mcp")?.addEventListener("click", loadMcpView);
+
+  // --------------------------------------------------
+  // View: Universal Plugins & Infinite MCP Hub
+  // --------------------------------------------------
+  const pluginState = { q: "", type: "all", source: "all", sort: "stars", page: 1 };
+  let pluginDebounce = null;
+
+  async function loadPluginsView(overrides = {}) {
+    Object.assign(pluginState, overrides);
+    const grid = document.getElementById("plugin-results-grid");
+    const statusBar = document.getElementById("plugin-status-bar");
+    if (!grid) return;
+
+    grid.innerHTML = `<div style="color:var(--text-muted); padding:24px;">Searching the plugin universe...</div>`;
+    if (statusBar) statusBar.textContent = "";
+
+    const q = pluginState.q.trim();
+    if (!q && pluginState.type === "installed") {
+      // Loading installed list
+    }
+
+    try {
+      const params = new URLSearchParams({
+        q,
+        type: pluginState.type,
+        source: pluginState.source,
+        sort: pluginState.sort,
+        page: pluginState.page
+      });
+      const res = await fetch(`/api/plugins/search?${params.toString()}`);
+      if (!res.ok) {
+        grid.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Failed to query plugins (HTTP ${res.status})</div>`;
+        return;
+      }
+      const data = await res.json();
+      const plugins = data.plugins || [];
+
+      if (statusBar) {
+        statusBar.textContent = `Showing ${plugins.length} of ${data.total} result${data.total === 1 ? "" : "s"} · page ${data.page}`;
+      }
+
+      grid.innerHTML = "";
+      if (plugins.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 32px; background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: 8px; text-align: center;">
+            <div style="font-weight:600; color:var(--text-primary); margin-bottom:6px;">No Plugins Found</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); max-width:480px; margin:0 auto;">
+              Try a broader search term, or clear the filters to browse the curated verified catalog.
+            </div>
+          </div>
+        `;
+      }
+
+      plugins.forEach((p) => {
+        const card = document.createElement("div");
+        card.className = "plugin-card";
+        const typePill = p.type || "mcp";
+        const verifiedBadge = p.verified
+          ? `<span class="badge-status running">● Verified</span>`
+          : `<span class="badge-status installed">GitHub</span>`;
+        const installedBadge = p.is_installed
+          ? `<span class="badge-status running" style="background:rgba(16,185,129,0.12); color:var(--accent-emerald);">Installed</span>`
+          : "";
+        const targets = (p.target_agents || []).join(" · ");
+
+        card.innerHTML = `
+          <div class="plugin-card-header">
+            <div style="min-width:0;">
+              <div class="plugin-name">${escapeHtml(p.name || p.id || "")}</div>
+              <div class="plugin-title">${escapeHtml((p.title || p.name || ""))}</div>
+            </div>
+            <div style="display:flex; gap:4px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end;">
+              ${typePill ? `<span class="plugin-type-pill ${typePill}">${escapeHtml(typePill)}</span>` : ""}
+            </div>
+          </div>
+          <div class="plugin-meta">
+            ${verifiedBadge}
+            ${installedBadge}
+            ${(p.stars || 0) ? `<span class="plugin-stars">★ ${p.stars.toLocaleString ? p.stars.toLocaleString() : p.stars}</span>` : ""}
+          </div>
+          <div class="plugin-desc">${escapeHtml(p.description || "No description provided.")}</div>
+          ${targets ? `<div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">Targets: ${escapeHtml(targets)}</div>` : ""}
+          ${p.command ? `<div class="plugin-cmd-box" title="${escapeHtml(p.command + " " + (p.args || []).join(" "))}">${escapeHtml(p.command + " " + (p.args || []).join(" "))}</div>` : ""}
+          <div class="plugin-actions">
+            ${
+              p.is_installed
+                ? `<button class="action-btn btn-uninstall" data-plugin-id="${escapeHtml(p.id)}">Uninstall</button>`
+                : `<button class="action-btn btn-install" data-plugin-id="${escapeHtml(p.id)}">Install → ${targets ? "Agents" : "Terminus"}</button>`
+            }
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      // Wire action buttons
+      grid.querySelectorAll("[data-plugin-id]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const pid = btn.getAttribute("data-plugin-id");
+          const isUninstall = btn.classList.contains("btn-uninstall");
+          btn.disabled = true;
+          btn.textContent = isUninstall ? "Removing..." : "Installing...";
+          try {
+            if (isUninstall) {
+              await fetch("/api/plugins/uninstall", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ plugin_id: pid })
+              });
+            } else {
+              const targets = ["claude", "hermes", "antigravity", "mochi", "terminus"];
+              const res = await fetch("/api/plugins/install", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ plugin_id: pid, target_agents: targets })
+              });
+              const out = await res.json();
+              if (statusBar && out.detail) {
+                statusBar.textContent = `⚠ ${out.detail}`;
+              }
+            }
+            loadPluginsView();
+          } catch (e) {
+            if (statusBar) statusBar.textContent = `Error: ${e.message}`;
+            btn.disabled = false;
+            btn.textContent = isUninstall ? "Uninstall" : "Install";
+          }
+        });
+      });
+
+      // Pagination
+      const prevBtn = document.getElementById("plugin-prev-page");
+      const nextBtn = document.getElementById("plugin-next-page");
+      const info = document.getElementById("plugin-page-info");
+      if (prevBtn) { prevBtn.disabled = pluginState.page <= 1; }
+      if (nextBtn) { nextBtn.disabled = !data.has_more; }
+      if (info) info.textContent = `Page ${data.page}`;
+    } catch (e) {
+      grid.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Error querying plugins</div>`;
+    }
+  }
+
+  function handlePluginFilterChange() {
+    pluginState.page = 1;
+    loadPluginsView();
+  }
+
+  document.getElementById("plugin-search-input")?.addEventListener("input", (e) => {
+    clearTimeout(pluginDebounce);
+    pluginDebounce = setTimeout(() => {
+      pluginState.q = e.target.value;
+      pluginState.page = 1;
+      loadPluginsView();
+    }, 350);
+  });
+
+  document.getElementById("plugin-type-select")?.addEventListener("change", (e) => {
+    pluginState.type = e.target.value;
+    handlePluginFilterChange();
+  });
+  document.getElementById("plugin-source-select")?.addEventListener("change", (e) => {
+    pluginState.source = e.target.value;
+    handlePluginFilterChange();
+  });
+  document.getElementById("plugin-sort-select")?.addEventListener("change", (e) => {
+    pluginState.sort = e.target.value;
+    handlePluginFilterChange();
+  });
+  document.getElementById("plugin-prev-page")?.addEventListener("click", () => {
+    if (pluginState.page > 1) loadPluginsView({ page: pluginState.page - 1 });
+  });
+  document.getElementById("plugin-next-page")?.addEventListener("click", () => {
+    loadPluginsView({ page: pluginState.page + 1 });
+  });
+  document.getElementById("btn-plugins-installed")?.addEventListener("click", () => {
+    pluginState.type = "installed";
+    document.getElementById("plugin-type-select").value = "installed";
+    pluginState.page = 1;
+    loadPluginsView();
+  });
 
   // --------------------------------------------------
   // View: Agent Control Plane (All 18+ Agents)

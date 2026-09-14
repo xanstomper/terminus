@@ -3814,3 +3814,192 @@ select option:checked {
 }
 
 
+
+/* =========================================================
+   Universal Plugins & Infinite MCP Hub
+   ========================================================= */
+.plugin-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.plugin-search-box {
+  flex: 1;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugin-search-box #plugin-search-input {
+  width: 100%;
+}
+
+.plugin-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plugin-filter-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plugin-filters select.command-field {
+  width: auto;
+  min-width: 130px;
+  height: 30px;
+  font-size: 0.74rem;
+}
+
+.plugin-status-bar {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+
+.plugin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.plugin-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.plugin-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.plugin-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plugin-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.plugin-title {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.plugin-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.plugin-type-pill {
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+}
+
+.plugin-type-pill.mcp { color: #7cc0ff; border-color: rgba(124, 192, 255, 0.3); background: rgba(124,192,255,0.08); }
+.plugin-type-pill.skill { color: #c4b5fd; border-color: rgba(196,181,253,0.3); background: rgba(196,181,253,0.08); }
+.plugin-type-pill.tool { color: #fcd34d; border-color: rgba(252,211,77,0.3); background: rgba(252,211,77,0.08); }
+
+.plugin-stars {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.plugin-desc {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.plugin-cmd-box {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.plugin-card .action-btn {
+  font-size: 0.72rem;
+  padding: 4px 10px;
+}
+
+.plugin-card .action-btn.btn-install {
+  background: rgba(124, 192, 255, 0.12);
+  border: 1px solid rgba(124, 192, 255, 0.35);
+  color: #dbeafe;
+}
+
+.plugin-card .action-btn.btn-install:hover {
+  background: rgba(124, 192, 255, 0.22);
+}
+
+.plugin-card .action-btn.btn-uninstall {
+  background: rgba(251, 113, 133, 0.1);
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  color: #fecdd3;
+}
+
+.plugin-card .action-btn.btn-uninstall:hover {
+  background: rgba(251, 113, 133, 0.2);
+}
+
+.plugin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.plugin-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

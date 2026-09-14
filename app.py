@@ -44,6 +44,7 @@ import workspace_manager
 import chat_engine
 import github_hub
 import harness
+import plugins_hub
 
 
 app = FastAPI(title="Terminus - The endpoint you can reach anywhere")
@@ -1731,6 +1732,72 @@ async def api_github_mcp_install(request: Request):
         return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------
+# Universal Plugins & Infinite MCP Hub APIs
+# ---------------------------------------------------------
+@app.get("/api/plugins/search")
+async def api_plugins_search(
+    request: Request,
+    q: str = "",
+    type: str = "all",
+    source: str = "all",
+    sort: str = "stars",
+    page: int = 1
+):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return await plugins_hub.search_universal_plugins(
+        query=q,
+        plugin_type=type,
+        source=source,
+        sort_by=sort,
+        page=page
+    )
+
+
+@app.post("/api/plugins/install")
+async def api_plugins_install(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    plugin_id = body.get("plugin_id", "")
+    target_agents = body.get("target_agents", ["all"])
+    custom_args = body.get("args")
+    custom_env = body.get("env")
+
+    if not plugin_id:
+        raise HTTPException(status_code=400, detail="plugin_id required")
+
+    res = await plugins_hub.install_plugin(
+        plugin_id=plugin_id,
+        target_agents=target_agents,
+        custom_args=custom_args,
+        custom_env=custom_env
+    )
+    skills_manager.scan_all_skills(force=True)
+    return res
+
+
+@app.get("/api/plugins/installed")
+async def api_plugins_installed(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return {"installed": plugins_hub.list_installed_plugins()}
+
+
+@app.post("/api/plugins/uninstall")
+async def api_plugins_uninstall(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    body = await request.json()
+    plugin_id = body.get("plugin_id", "")
+    if not plugin_id:
+        raise HTTPException(status_code=400, detail="plugin_id required")
+    res = plugins_hub.uninstall_plugin(plugin_id)
+    skills_manager.scan_all_skills(force=True)
+    return res
 
 
 # ---------------------------------------------------------
