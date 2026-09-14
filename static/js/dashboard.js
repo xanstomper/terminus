@@ -960,10 +960,11 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentSessionFilter = "all";
 
   const quickAgentMeta = {
-    shell: { title: "Shell", cmd: null, id: null },
+    shell: { title: "Shell", cmd: null, id: "shell" },
     claude: { title: "Claude Code", cmd: "claude", id: "claude" },
-    hermes: { title: "Hermes", cmd: "/home/jewboy420/hermes-env/bin/hermes", id: "hermes" },
-    agy: { title: "Antigravity", cmd: "agy", id: "agy" },
+    hermes: { title: "Hermes Agent", cmd: "/home/jewboy420/hermes-env/bin/hermes", id: "hermes" },
+    agy: { title: "Antigravity", cmd: "agy", id: "antigravity" },
+    antigravity: { title: "Antigravity", cmd: "agy", id: "antigravity" },
     mochi: { title: "Mochi", cmd: "mochi", id: "mochi" },
     codex: { title: "Codex", cmd: "codex", id: "codex" },
     cline: { title: "Cline", cmd: "cline", id: "cline" },
@@ -972,7 +973,13 @@ document.addEventListener("DOMContentLoaded", () => {
     opencode: { title: "OpenCode", cmd: "opencode", id: "opencode" },
     gemini: { title: "Gemini CLI", cmd: "gemini", id: "gemini" },
     jcode: { title: "J-Code", cmd: "jcode repl", id: "jcode" },
-    pi: { title: "Pi", cmd: "pi", id: "pi" },
+    pi: { title: "Pi Agent", cmd: "pi", id: "pi" },
+    kimi: { title: "Kimi Code", cmd: "kimi", id: "kimi" },
+    qwen: { title: "Qwen Code", cmd: "qwen", id: "qwen" },
+    goose: { title: "Goose", cmd: "goose session", id: "goose" },
+    openhands: { title: "OpenHands", cmd: "openhands", id: "openhands" },
+    continue: { title: "Continue", cmd: "continue", id: "continue" },
+    cursor: { title: "Cursor CLI", cmd: "cursor", id: "cursor" },
     codebuff: { title: "Codebuff", cmd: "codebuff", id: "codebuff" },
     crush: { title: "Crush", cmd: "crush", id: "crush" }
   };
@@ -4508,24 +4515,41 @@ document.addEventListener("DOMContentLoaded", () => {
     if (hero) hero.style.display = "none";
 
     const isUser = role === "user";
-    const row = document.createElement("div");
-    row.className = `chat-msg-row ${isUser ? "user-row" : "assistant-row"}`;
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const modelTag = chatState.currentModel || "OPUS/ZEN";
 
-    const avatar = isUser
-      ? `<div class="chat-avatar user-avatar">YOU</div>`
-      : `<div class="chat-avatar assistant-avatar">${getAgentIconHtml('claude', 18)}</div>`;
+    const frame = document.createElement("div");
+    frame.className = `chat-frame ${isUser ? "user-frame" : "assistant-frame"}`;
 
-    row.innerHTML = `
-      ${!isUser ? avatar : ""}
-      <div class="chat-bubble">
-        ${formatChatMarkdown(content)}
-      </div>
-      ${isUser ? avatar : ""}
-    `;
+    if (isUser) {
+      frame.innerHTML = `
+        <div class="frame-meta">
+          <div><span class="prompt-sym">&gt;</span> <span class="frame-sender">OPERATOR</span></div>
+          <div class="frame-time">${now}</div>
+        </div>
+        <div class="frame-content">
+          ${formatChatMarkdown(content)}
+        </div>
+      `;
+    } else {
+      frame.innerHTML = `
+        <div class="frame-meta assistant-meta">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="prompt-sym" style="color:#f59e0b;">*</span>
+            <span class="frame-sender" style="color:#f59e0b;">TERMINUS HARNESS</span>
+            <span class="frame-model-tag">${escapeHtml(modelTag)}</span>
+          </div>
+          <div class="frame-time">${now}</div>
+        </div>
+        <div class="frame-content assistant-content">
+          ${formatChatMarkdown(content)}
+        </div>
+      `;
+    }
 
-    container.appendChild(row);
+    container.appendChild(frame);
     container.scrollTop = container.scrollHeight;
-    return row;
+    return frame;
   }
 
   async function sendChatMessage() {
@@ -4538,18 +4562,18 @@ document.addEventListener("DOMContentLoaded", () => {
     input.value = "";
     input.style.height = "auto";
 
-    // 1. Append User Bubble
+    // 1. Append User Frame
     appendChatMessageToDOM("user", message);
 
-    // 2. Append Assistant Bubble with live cursor
+    // 2. Append Assistant Frame with technical execution telemetry
     chatState.isStreaming = true;
     const sendBtn = document.getElementById("btn-chat-send");
     if (sendBtn) sendBtn.disabled = true;
 
     const assistantRow = appendChatMessageToDOM("assistant", "");
-    const bubbleEl = assistantRow?.querySelector(".chat-bubble");
+    const bubbleEl = assistantRow?.querySelector(".frame-content");
     if (bubbleEl) {
-      bubbleEl.innerHTML = `<span class="indicator-dot" style="background:var(--accent-cyan); animation:blink 1s infinite;"></span> <span style="color:var(--text-muted); font-size:0.75rem;">Team Leader Harness orchestrating solution...</span>`;
+      bubbleEl.innerHTML = `<span class="indicator-dot" style="background:#f59e0b; animation:blink 1s infinite; display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px;"></span> <span style="color:var(--text-muted); font-size:0.75rem; font-family:var(--font-mono);">&gt; HARNESS EXECUTION LOOP INITIATED...</span>`;
     }
 
     let accumulatedText = "";

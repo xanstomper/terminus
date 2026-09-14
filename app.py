@@ -277,7 +277,13 @@ class TerminalSession:
                 os.chdir(target_cwd)
                 
                 shell = config.DEFAULT_SHELL
-                os.execvpe(shell, [shell, "-l"], env)
+                if self.initial_cmd:
+                    # Execute agent command directly in login shell, falling back to login shell if agent exits
+                    # This eliminates the race condition and ensures the conversation/agent opens immediately!
+                    cmd_wrapper = f"{self.initial_cmd}; exec {shell} --login"
+                    os.execvpe(shell, [shell, "--login", "-c", cmd_wrapper], env)
+                else:
+                    os.execvpe(shell, [shell, "-l"], env)
             except Exception as e:
                 sys.stderr.write(f"Shell exec failed: {e}\n")
                 os._exit(1)
@@ -288,10 +294,6 @@ class TerminalSession:
             self.child_pid = pid
             self.is_alive = True
             loop.add_reader(self.master_fd, self._on_read)
-            
-            # If an initial command was requested (e.g. claude, mochi, agy), execute it
-            if self.initial_cmd:
-                loop.call_later(0.3, lambda: self.write_input(self.initial_cmd + "\n"))
 
     def _on_read(self):
         if not self.is_alive or self.master_fd is None:
@@ -980,15 +982,38 @@ async def api_resume_session(session_id: str, request: Request):
     # Case 1: Session is active in memory
     if session_id in sessions and sessions[session_id].is_alive:
         s = sessions[session_id]
-        if s.agent_id and s.agent_id.lower() not in ("shell", "sh", "bash"):
-            from adapters import get_agent_adapter
-            adapter = get_agent_adapter(s.agent_id)
-            if adapter:
-                snippet = s.get_recent_snippet(3).strip()
-                if snippet.endswith("$") or snippet.endswith("#") or not snippet:
+        
+        # Check whether an agent is already actively running as a child process
+        has_agent_running = False
+        try:
+            parent = psutil.Process(s.child_pid)
+            children = parent.children(recursive=True)
+            for c in children:
+                name = c.name().lower()
+                cmdline = " ".join(c.cmdline()).lower()
+                if any(k in name or k in cmdline for k in ["claude", "hermes", "agy", "mochi", "codex", "cline", "roo", "aider", "goose", "crush", "jcode"]):
+                    has_agent_running = True
+                    break
+        except Exception:
+            pass
+
+        # If agent is not running (e.g. idle at shell prompt or session was created from shell), start/resume it
+        if not has_agent_running:
+            from adapters import get_agent_adapter, get_all_agents
+            agent_id = s.agent_id
+            if not agent_id or agent_id.lower() in ("shell", "sh", "bash"):
+                for a in get_all_agents():
+                    if a["name"].lower() in s.title.lower() or a["id"].lower() in s.title.lower():
+                        agent_id = a["id"]
+                        s.agent_id = agent_id
+                        break
+            if agent_id and agent_id.lower() not in ("shell", "sh", "bash"):
+                adapter = get_agent_adapter(agent_id)
+                if adapter:
                     cmd = adapter.get("resume_cmd") or adapter.get("launch_cmd") or adapter.get("cmd")
                     if cmd:
-                        s.write_input(cmd + "\n")
+                        s.write_input(f"\n{cmd}\n")
+                        
         return {
             "session_id": session_id,
             "title": s.title,
@@ -1006,9 +1031,15 @@ async def api_resume_session(session_id: str, request: Request):
     agent_id = rec.get("agent_id") if rec else None
     cwd = rec.get("cwd", config.WORKING_DIRECTORY) if rec else config.WORKING_DIRECTORY
     
+    from adapters import get_agent_adapter, get_all_agents
+    if not agent_id or agent_id.lower() in ("shell", "sh", "bash"):
+        for a in get_all_agents():
+            if a["name"].lower() in new_title.lower() or a["id"].lower() in new_title.lower():
+                agent_id = a["id"]
+                break
+
     initial_cmd = None
     if agent_id and agent_id.lower() not in ("shell", "sh", "bash"):
-        from adapters import get_agent_adapter
         adapter = get_agent_adapter(agent_id)
         if adapter:
             initial_cmd = adapter.get("resume_cmd") or adapter.get("launch_cmd") or adapter.get("cmd")

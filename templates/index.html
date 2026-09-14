@@ -342,31 +342,33 @@
             <div class="chat-messages-container" id="chat-messages-container">
               <!-- Welcome hero when empty -->
               <div class="chat-welcome-hero" id="chat-welcome-hero">
-                <div class="welcome-logo-badge">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                  </svg>
+                <div class="workbench-top-bar">
+                  <div class="workbench-title-wrap">
+                    <span class="prompt-sym" style="color:#f59e0b; font-weight:700;">&gt;</span>
+                    <span class="workbench-wordmark">TERMINUS AUTONOMOUS HARNESS</span>
+                    <span class="workbench-badge">TEAM LEADER AI</span>
+                  </div>
+                  <div style="font-family:var(--font-mono); font-size:0.68rem; color:var(--text-dim);">CONTROL PLANE · PORT 9120</div>
                 </div>
-                <div class="welcome-hero-title">Terminus Team Leader Harness</div>
-                <div class="welcome-hero-desc">
-                  Universal AI engineering leader. State any goal, and the Harness will autonomously select models, dispatch coding agents (Claude, Hermes, Antigravity), pull skills from GitHub, and execute tests without manual terminal input.
+                <div class="workbench-sub">
+                  Universal AI engineering leader. Dispatch coding agents (Claude, Hermes, Antigravity), pull skills &amp; MCPs from GitHub, inspect repos, and run automated pipelines without touching a shell.
                 </div>
                 <div class="welcome-prompts-grid">
                   <div class="welcome-prompt-card" data-starter="Audit this repository for security vulnerabilities and race conditions, then generate patches.">
-                    <div class="prompt-card-label">Security Audit & Patch</div>
-                    <div class="prompt-card-sub">Dispatch Claude & Antigravity to audit code and apply surgical fixes.</div>
+                    <div class="prompt-card-label">&gt; AUDIT_SECURITY_PATCH</div>
+                    <div class="prompt-card-sub">Dispatch Claude &amp; Antigravity to audit code and apply surgical fixes.</div>
                   </div>
                   <div class="welcome-prompt-card" data-starter="Search GitHub for a comprehensive test-driven development skill, install it, and inject it into Hermes.">
-                    <div class="prompt-card-label">Pull GitHub Skill</div>
-                    <div class="prompt-card-sub">Scrape and pull live skills from GitHub repositories.</div>
+                    <div class="prompt-card-label">&gt; PULL_GITHUB_SKILL</div>
+                    <div class="prompt-card-sub">Pull live skills and MCP servers from GitHub repositories.</div>
                   </div>
                   <div class="welcome-prompt-card" data-starter="Design and implement a fullstack feature: schema, backend API endpoint, and UI components.">
-                    <div class="prompt-card-label">Fullstack Autonomous Slice</div>
+                    <div class="prompt-card-label">&gt; FULLSTACK_PIPELINE</div>
                     <div class="prompt-card-sub">Coordinate backend, database, and UI agent workers in parallel.</div>
                   </div>
                   <div class="welcome-prompt-card" data-starter="Execute the test suite, analyze failing traces, and fix broken assertions.">
-                    <div class="prompt-card-label">Self-Healing Test Runner</div>
-                    <div class="prompt-card-sub">Run bash test runner and iteratively repair code until 100% green.</div>
+                    <div class="prompt-card-label">&gt; SELF_HEALING_TESTS</div>
+                    <div class="prompt-card-sub">Run test runner and iteratively repair code until 100% green.</div>
                   </div>
                 </div>
               </div>
@@ -1083,7 +1085,7 @@
 
   <!-- Launch Session Modal -->
   <div class="modal-overlay" id="new-session-modal">
-    <div class="modal-box">
+    <div class="modal-box" style="width: 720px; max-width: 95vw;">
       <div class="modal-header">
         <div class="modal-heading">Launch Session</div>
         <button type="button" class="modal-close-btn" data-modal-close>
@@ -1098,7 +1100,7 @@
         Select an agent or shell to start in a dedicated PTY session:
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+      <div class="modal-agents-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 16px;">
         <button class="action-btn modal-agent-btn" data-quick-launch="bash" data-title="Shell" data-cmd="">
           <span class="agent-monogram mono-sh"><img src="/static/img/agents/shell.svg" class="agent-icon" alt="Shell"></span>
           <span class="agent-btn-text">Standard Shell</span>
@@ -1143,9 +1145,25 @@
           <span class="agent-monogram mono-gm"><img src="/static/img/agents/gemini.svg" class="agent-icon" alt="Gemini"></span>
           <span class="agent-btn-text">Gemini CLI</span>
         </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="pi" data-title="Pi Agent" data-cmd="pi">
+          <span class="agent-monogram mono-pi"><img src="/static/img/agents/pi.svg" class="agent-icon" alt="Pi"></span>
+          <span class="agent-btn-text">Pi Agent</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="kimi" data-title="Kimi Code" data-cmd="kimi">
+          <span class="agent-monogram mono-cx"><img src="/static/img/agents/kimi.svg" class="agent-icon" alt="Kimi"></span>
+          <span class="agent-btn-text">Kimi Code</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="qwen" data-title="Qwen Code" data-cmd="qwen">
+          <span class="agent-monogram mono-gm"><img src="/static/img/agents/qwen.svg" class="agent-icon" alt="Qwen"></span>
+          <span class="agent-btn-text">Qwen Code</span>
+        </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="goose" data-title="Goose" data-cmd="goose session">
           <span class="agent-monogram mono-mo"><img src="/static/img/agents/goose.svg" class="agent-icon" alt="Goose"></span>
           <span class="agent-btn-text">Goose</span>
+        </button>
+        <button class="action-btn modal-agent-btn" data-quick-launch="openhands" data-title="OpenHands" data-cmd="openhands">
+          <span class="agent-monogram mono-cr"><img src="/static/img/agents/openhands.svg" class="agent-icon" alt="OpenHands"></span>
+          <span class="agent-btn-text">OpenHands</span>
         </button>
         <button class="action-btn modal-agent-btn" data-quick-launch="continue" data-title="Continue" data-cmd="continue">
           <span class="agent-monogram mono-cx"><img src="/static/img/agents/continue.svg" class="agent-icon" alt="Continue"></span>
@@ -1280,7 +1298,7 @@
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="claude" title="Claude Code">
             <span class="agent-monogram mono-cc"><img src="/static/img/agents/claude.svg" class="agent-icon" alt="Claude"></span>
-            <span class="agent-pill-name">Claude</span>
+            <span class="agent-pill-name">Claude Code</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="hermes" title="Hermes Agent">
             <span class="agent-monogram mono-he"><img src="/static/img/agents/hermes.svg" class="agent-icon" alt="Hermes"></span>
@@ -1296,7 +1314,7 @@
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="codex" title="Codex">
             <span class="agent-monogram mono-cx"><img src="/static/img/agents/codex.svg" class="agent-icon" alt="Codex"></span>
-            <span class="agent-pill-name">Codex</span>
+            <span class="agent-pill-name">Codex K</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="cline" title="Cline">
             <span class="agent-monogram mono-cl"><img src="/static/img/agents/cline.svg" class="agent-icon" alt="Cline"></span>
@@ -1316,15 +1334,39 @@
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="gemini" title="Gemini CLI">
             <span class="agent-monogram mono-gm"><img src="/static/img/agents/gemini.svg" class="agent-icon" alt="Gemini"></span>
-            <span class="agent-pill-name">Gemini</span>
+            <span class="agent-pill-name">Gemini CLI</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="pi" title="Pi Agent">
+            <span class="agent-monogram mono-pi"><img src="/static/img/agents/pi.svg" class="agent-icon" alt="Pi"></span>
+            <span class="agent-pill-name">Pi Agent</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="kimi" title="Kimi Code">
+            <span class="agent-monogram mono-cx"><img src="/static/img/agents/kimi.svg" class="agent-icon" alt="Kimi"></span>
+            <span class="agent-pill-name">Kimi Code</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="qwen" title="Qwen Code">
+            <span class="agent-monogram mono-gm"><img src="/static/img/agents/qwen.svg" class="agent-icon" alt="Qwen"></span>
+            <span class="agent-pill-name">Qwen Code</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="goose" title="Goose">
+            <span class="agent-monogram mono-mo"><img src="/static/img/agents/goose.svg" class="agent-icon" alt="Goose"></span>
+            <span class="agent-pill-name">Goose</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="openhands" title="OpenHands">
+            <span class="agent-monogram mono-cr"><img src="/static/img/agents/openhands.svg" class="agent-icon" alt="OpenHands"></span>
+            <span class="agent-pill-name">OpenHands</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="continue" title="Continue">
+            <span class="agent-monogram mono-cx"><img src="/static/img/agents/continue.svg" class="agent-icon" alt="Continue"></span>
+            <span class="agent-pill-name">Continue</span>
+          </button>
+          <button type="button" class="session-agent-pill" data-quick-agent="cursor" title="Cursor CLI">
+            <span class="agent-monogram mono-sh"><img src="/static/img/agents/cursor.svg" class="agent-icon" alt="Cursor"></span>
+            <span class="agent-pill-name">Cursor CLI</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="jcode" title="J-Code">
             <span class="agent-monogram mono-jc"><img src="/static/img/agents/jcode.svg" class="agent-icon" alt="J-Code"></span>
             <span class="agent-pill-name">J-Code</span>
-          </button>
-          <button type="button" class="session-agent-pill" data-quick-agent="pi" title="Pi">
-            <span class="agent-monogram mono-pi"><img src="/static/img/agents/pi.svg" class="agent-icon" alt="Pi"></span>
-            <span class="agent-pill-name">Pi</span>
           </button>
           <button type="button" class="session-agent-pill" data-quick-agent="codebuff" title="Codebuff">
             <span class="agent-monogram mono-cb"><img src="/static/img/agents/codebuff.svg" class="agent-icon" alt="Codebuff"></span>
