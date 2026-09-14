@@ -1743,6 +1743,7 @@ async def api_plugins_search(
     q: str = "",
     type: str = "all",
     source: str = "all",
+    category: str = "all",
     sort: str = "stars",
     page: int = 1
 ):
@@ -1752,9 +1753,29 @@ async def api_plugins_search(
         query=q,
         plugin_type=type,
         source=source,
+        category=category,
         sort_by=sort,
         page=page
     )
+
+
+@app.get("/api/plugins/categories")
+async def api_plugins_categories(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    return {"categories": plugins_hub.list_categories()}
+
+
+@app.get("/api/plugins/detail")
+async def api_plugins_detail(request: Request, plugin_id: str = ""):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401)
+    if not plugin_id:
+        raise HTTPException(status_code=400, detail="plugin_id required")
+    detail = plugins_hub.get_plugin_detail(plugin_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="plugin not found")
+    return detail
 
 
 @app.post("/api/plugins/install")

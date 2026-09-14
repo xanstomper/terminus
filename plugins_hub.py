@@ -442,7 +442,8 @@ async def search_universal_plugins(
     query: str = "",
     plugin_type: str = "all",      # all, mcp, skill, tool, installed
     source: str = "all",           # all, official, github, smithery, awesome
-    sort_by: str = "stars",        # stars, updated, name
+    category: str = "all",         # all, or any catalog category name
+    sort_by: str = "stars",        # stars, updated, name, verified
     page: int = 1,
     per_page: int = 24
 ) -> Dict[str, Any]:
@@ -469,6 +470,9 @@ async def search_universal_plugins(
             continue
         # Check source filter
         if source != "all" and item.get("source") != source:
+            continue
+        # Check category filter
+        if category != "all" and item.get("category", "") != category:
             continue
         
         # Check search query
@@ -875,6 +879,26 @@ def uninstall_plugin(plugin_id: str) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # 3.5 Hermes Agent (~/.hermes/config.yaml)
+    hermes_cfg = Path.home() / ".hermes" / "config.yaml"
+    if hermes_cfg.exists():
+        try:
+            import yaml as _yaml
+            with open(hermes_cfg, "r") as f:
+                h = _yaml.safe_load(f) or {}
+            servers = h.get("mcp", {}).get("servers", {})
+            if isinstance(servers, dict) and cleaned_name in servers:
+                del servers[cleaned_name]
+                if servers:
+                    h["mcp"]["servers"] = servers
+                else:
+                    h.setdefault("mcp", {}).pop("servers", None)
+                with open(hermes_cfg, "w") as f:
+                    _yaml.safe_dump(h, f)
+                removed_from.append("hermes")
+        except Exception:
+            pass
+
     # 4. Skill folders
     for s_dir in [TERMINUS_SKILLS_DIR, Path.home() / ".hermes" / "skills", Path.home() / ".gemini" / "antigravity-cli" / "skills"]:
         target = s_dir / cleaned_name
@@ -890,3 +914,100 @@ def uninstall_plugin(plugin_id: str) -> Dict[str, Any]:
         "plugin_id": plugin_id,
         "removed_from": removed_from
     }
+
+
+def list_categories() -> List[Dict[str, str]]:
+    """Return the distinct categories present across verified catalogs with counts."""
+    counts: Dict[str, int] = {}
+    for item in VERIFIED_MCP_CATALOG + VERIFIED_SKILLS_CATALOG:
+        cat = item.get("category", "Uncategorized")
+        counts[cat] = counts.get(cat, 0) + 1
+    return [
+        {"name": name, "count": count}
+        for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+
+def get_plugin_detail(plugin_id: str) -> Optional[Dict[str, Any]]:
+    """Return the full spec for a single plugin by ID/name across verified catalogs."""
+    plugin_id_norm = plugin_id.replace("mcp:", "").replace("skill:", "").replace("gh:", "")
+    installed_ids = get_installed_plugin_ids()
+
+    # Search verified catalogs (MCP + Skills)
+    for item in VERIFIED_MCP_CATALOG + VERIFIED_SKILLS_CATALOG:
+        if item["id"] == plugin_id or item.get("name") == plugin_id_norm:
+            detail = dict(item)
+            detail["is_installed"] = item["id"] in installed_ids or item.get("name") in installed_ids
+            detail["installed_agents"] = _plugin_installed_agents(plugin_id_norm, item.get("type", "mcp"))
+            return detail
+
+    # Dynamic GitHub MCP fallback (gh:owner/repo)
+    if plugin_id.startswith("gh:"):
+        repo_part = plugin_id[3:]
+        name_part = repo_part.split("/")[-1].lower()
+        return {
+            "id": plugin_id,
+            "name": name_part,
+            "repo": repo_part,
+            "title": name_part.replace("-", " ").title(),
+            "type": "mcp",
+            "source": "github",
+            "verified": False,
+            "description": f"Community GitHub MCP or tool server from {repo_part}.",
+            "is_installed": False,
+            "installed_agents": [],
+            "transport": "unknown",
+            "command": "npx",
+            "args": [],
+            "env": {},
+            "target_agents": ["claude", "hermes", "antigravity", "mochi"],
+            "stars": 0,
+            "category": "GitHub",
+        }
+
+    return None
+
+
+def _plugin_installed_agents(name: str, plugin_type: str) -> List[str]:
+    """Report which agents currently have this plugin installed."""
+    agents: List[str] = []
+    subs = [
+        ("terminus", TERMINUS_MCP_FILE),
+        ("claude", Path.home() / ".claude.json"),
+        ("antigravity", Path.home() / ".gemini" / "antigravity-cli" / "mcp.json"),
+    ]
+    for label, path in subs:
+        if not path.exists():
+            continue
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            if name in data.get("mcpServers", {}):
+                agents.append(label)
+        except Exception:
+            pass
+
+    # Hermes config.yaml (mcp.servers dict keyed by server name)
+    hermes_cfg = Path.home() / ".hermes" / "config.yaml"
+    if hermes_cfg.exists():
+        try:
+            import yaml as _yaml
+            with open(hermes_cfg, "r") as f:
+                hdata = _yaml.safe_load(f) or {}
+            servers = hdata.get("mcp", {}).get("servers", {})
+            if isinstance(servers, dict) and name in servers:
+                agents.append("hermes")
+        except Exception:
+            pass
+
+    # Skills directories
+    if plugin_type == "skill":
+        for label, sdir in [
+            ("terminus", TERMINUS_SKILLS_DIR),
+            ("hermes", Path.home() / ".hermes" / "skills"),
+            ("antigravity", Path.home() / ".gemini" / "antigravity-cli" / "skills"),
+        ]:
+            if (sdir / name).exists():
+                agents.append(label)
+
+    return sorted(set(agents))

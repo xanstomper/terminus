@@ -4003,3 +4003,34 @@ select option:checked {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Plugin modal agent checkboxes + detail button */
+.plugin-card .action-btn.btn-details {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.plugin-card .action-btn.btn-details:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.plugin-agent-check {
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.plugin-agent-check:has(input:checked) {
+  border-color: rgba(124, 192, 255, 0.5) !important;
+  background: rgba(124, 192, 255, 0.08) !important;
+}
+
+.plugin-agent-check:has(input:disabled) {
+  opacity: 0.5;
+}
+
+.plugin-agent-check input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}

@@ -2111,8 +2111,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // --------------------------------------------------
   // View: Universal Plugins & Infinite MCP Hub
   // --------------------------------------------------
-  const pluginState = { q: "", type: "all", source: "all", sort: "stars", page: 1 };
+  const pluginState = { q: "", type: "all", source: "all", category: "all", sort: "stars", page: 1 };
   let pluginDebounce = null;
+  let activePluginDetail = null;
 
   async function loadPluginsView(overrides = {}) {
     Object.assign(pluginState, overrides);
@@ -2133,6 +2134,7 @@ document.addEventListener("DOMContentLoaded", () => {
         q,
         type: pluginState.type,
         source: pluginState.source,
+        category: pluginState.category,
         sort: pluginState.sort,
         page: pluginState.page
       });
@@ -2191,6 +2193,7 @@ document.addEventListener("DOMContentLoaded", () => {
           ${targets ? `<div style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">Targets: ${escapeHtml(targets)}</div>` : ""}
           ${p.command ? `<div class="plugin-cmd-box" title="${escapeHtml(p.command + " " + (p.args || []).join(" "))}">${escapeHtml(p.command + " " + (p.args || []).join(" "))}</div>` : ""}
           <div class="plugin-actions">
+            <button class="action-btn btn-details" data-plugin-detail="${escapeHtml(p.id)}">Detail</button>
             ${
               p.is_installed
                 ? `<button class="action-btn btn-uninstall" data-plugin-id="${escapeHtml(p.id)}">Uninstall</button>`
@@ -2233,6 +2236,13 @@ document.addEventListener("DOMContentLoaded", () => {
             btn.disabled = false;
             btn.textContent = isUninstall ? "Uninstall" : "Install";
           }
+        });
+      });
+
+      // Wire detail buttons
+      grid.querySelectorAll("[data-plugin-detail]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          openPluginDetail(btn.getAttribute("data-plugin-detail"), statusBar);
         });
       });
 
@@ -2285,6 +2295,198 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("plugin-type-select").value = "installed";
     pluginState.page = 1;
     loadPluginsView();
+  });
+
+  document.getElementById("plugin-category-select")?.addEventListener("change", (e) => {
+    pluginState.category = e.target.value;
+    handlePluginFilterChange();
+  });
+
+  // Populate category filters from backend
+  async function populatePluginCategories() {
+    const sel = document.getElementById("plugin-category-select");
+    if (!sel || sel.options.length > 1) return;
+    try {
+      const res = await fetch("/api/plugins/categories");
+      if (!res.ok) return;
+      const data = await res.json();
+      (data.categories || []).forEach((c) => {
+        if (!c.name) return;
+        const opt = document.createElement("option");
+        opt.value = c.name;
+        opt.textContent = `${c.name} (${c.count})`;
+        sel.appendChild(opt);
+      });
+    } catch (e) { /* non-fatal */ }
+  }
+  populatePluginCategories();
+
+  // --------------------------------------------------
+  // Plugin Detail Modal
+  // --------------------------------------------------
+  async function openPluginDetail(pluginId, statusBar) {
+    const modal = document.getElementById("plugin-detail-modal");
+    const body = document.getElementById("plugin-modal-body");
+    const title = document.getElementById("plugin-modal-title");
+    if (!modal || !body) return;
+
+    modal.classList.add("open");
+    if (title) title.textContent = "Loading...";
+    body.innerHTML = `<div style="color:var(--text-muted); padding:24px; text-align:center;">Loading plugin details...</div>`;
+
+    try {
+      const res = await fetch(`/api/plugins/detail?plugin_id=${encodeURIComponent(pluginId)}`);
+      if (!res.ok) {
+        body.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Failed to load details (HTTP ${res.status})</div>`;
+        if (title) title.textContent = "Error";
+        return;
+      }
+      const d = await res.json();
+      activePluginDetail = d;
+      if (title) title.textContent = `${d.name}`;
+      renderPluginModal(d, statusBar);
+    } catch (e) {
+      body.innerHTML = `<div style="color:var(--accent-rose); padding:24px;">Error loading details: ${e.message}</div>`;
+    }
+  }
+
+  function renderPluginModal(d, statusBar) {
+    const body = document.getElementById("plugin-modal-body");
+    if (!body) return;
+    const installedAgents = d.installed_agents || [];
+    const allAgents = ["claude", "hermes", "antigravity", "mochi", "terminus"];
+    const typePill = d.type || "mcp";
+    const isInstalled = d.is_installed;
+    const repoLink = d.repo ? `https://github.com/${d.repo}` : null;
+
+    // Which agents are candidates for install (respect declared targets when present)
+    const declared = (d.target_agents && d.target_agents.length) ? d.target_agents : allAgents;
+    const candidateAgents = d.source === "github" && !declared.length ? allAgents : declared;
+
+    const agentChecks = (isInstalled ? installedAgents : candidateAgents.map(a => a)).length
+      ? `
+        <div style="margin:14px 0 4px; font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">
+          Install into target agents
+        </div>
+        <div class="modal-agents-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin-bottom:8px;">
+          ${candidateAgents.map(a => {
+            const checked = isInstalled ? installedAgents.includes(a) : true;
+            const disabled = isInstalled && !installedAgents.includes(a);
+            return `
+              <label class="plugin-agent-check ${checked ? "checked" : ""}" style="display:flex; align-items:center; gap:7px; padding:6px 9px; border:1px solid ${checked ? "rgba(124,192,255,0.4)" : "var(--border-subtle)"}; border-radius:6px; background:rgba(255,255,255,0.03); cursor:${disabled ? "not-allowed" : "pointer"};">
+                <input type="checkbox" class="plugin-agent-cb" value="${a}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} style="accent-color:#7cc0ff;">
+                <span style="font-size:0.74rem; text-transform:capitalize;">${a}</span>
+              </label>
+            `;
+          }).join("")}
+        </div>
+      ` : "";
+
+    const envRows = (d.env && Object.keys(d.env).length)
+      ? `<div class="plugin-cmd-box" style="white-space:pre-wrap; margin-top:6px;">${escapeHtml(Object.entries(d.env).map(([k,v]) => `${k}=${v}`).join("\n"))}</div>`
+      : `<div style="font-size:0.74rem; color:var(--text-muted);">No environment variables set.</div>`;
+
+    body.innerHTML = `
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px;">
+        <div>
+          <div style="font-size:1.02rem; font-weight:700; color:#fff;">${escapeHtml(d.title || d.name || "")}</div>
+          <div class="plugin-meta" style="margin-top:6px;">
+            <span class="plugin-type-pill ${typePill}">${escapeHtml(typePill)}</span>
+            ${d.verified ? '<span class="badge-status running">● Verified</span>' : '<span class="badge-status installed">GitHub</span>'}
+            ${d.category ? `<span style="font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">${escapeHtml(d.category)}</span>` : ""}
+            ${(d.stars || 0) ? `<span class="plugin-stars">★ ${d.stars.toLocaleString()}</span>` : ""}
+          </div>
+        </div>
+        <div style="flex-shrink:0; text-align:right; font-size:0.7rem; color:var(--text-muted); font-family:var(--font-mono);">
+          ${d.source || ""}<br>${repoLink ? `<a href="${repoLink}" target="_blank" rel="noopener noreferrer" style="color:#7cc0ff; text-decoration:none;">${escapeHtml(d.repo)}</a>` : ""}
+        </div>
+      </div>
+
+      <div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.55; margin-bottom:14px;">${escapeHtml(d.description || "")}</div>
+
+      <div class="plugin-prop-row-detail" style="display:grid; grid-template-columns:90px 1fr; gap:6px 10px; font-size:0.76rem; margin-bottom:12px;">
+        ${d.transport ? `<div style="color:var(--text-muted);">Transport</div><div style="font-family:var(--font-mono);">${escapeHtml(String(d.transport).toUpperCase())}</div>` : ""}
+        ${d.command ? `<div style="color:var(--text-muted);">Command</div><div style="font-family:var(--font-mono);">${escapeHtml(d.command)}</div>` : ""}
+        ${d.args && d.args.length ? `<div style="color:var(--text-muted);">Args</div><div style="font-family:var(--font-mono); word-break:break-all;">${escapeHtml(d.args.join(" "))}</div>` : ""}
+        ${d.author ? `<div style="color:var(--text-muted);">Author</div><div>${escapeHtml(d.author)}</div>` : ""}
+      </div>
+
+      <div style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:4px;">Environment</div>
+      ${envRows}
+
+      ${agentChecks}
+
+      ${isInstalled
+        ? `<div style="margin-top:10px; color:var(--accent-emerald); font-size:0.78rem;">● Installed in: ${installedAgents.join(", ") || "none locally detected"}</div>`
+        : ""}
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px; border-top:1px solid rgba(255,255,255,0.08); padding-top:12px;">
+        ${isInstalled
+          ? `<button class="action-btn btn-uninstall" id="btn-modal-uninstall">Uninstall from all agents</button>`
+          : `<button class="action-btn btn-install" id="btn-modal-install">Install into selected agents</button>`}
+        <button class="action-btn" id="btn-modal-close">Close</button>
+      </div>
+    `;
+
+    // Wire agent checkbox label styling toggle
+    body.querySelectorAll(".plugin-agent-cb").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        cb.closest("label").classList.toggle("checked", cb.checked);
+      });
+    });
+
+    body.querySelector("#btn-modal-close")?.addEventListener("click", () => {
+      document.getElementById("plugin-detail-modal")?.classList.remove("open");
+    });
+
+    if (isInstalled) {
+      body.querySelector("#btn-modal-uninstall")?.addEventListener("click", async () => {
+        const btn = body.querySelector("#btn-modal-uninstall");
+        btn.disabled = true; btn.textContent = "Removing...";
+        try {
+          await fetch("/api/plugins/uninstall", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ plugin_id: d.id })
+          });
+          if (statusBar) statusBar.textContent = `✓ Uninstalled ${d.name}`;
+          document.getElementById("plugin-detail-modal")?.classList.remove("open");
+          loadPluginsView();
+        } catch (e) {
+          btn.disabled = false; btn.textContent = "Uninstall from all agents";
+        }
+      });
+    } else {
+      body.querySelector("#btn-modal-install")?.addEventListener("click", async () => {
+        const btn = body.querySelector("#btn-modal-install");
+        const selected = Array.from(body.querySelectorAll(".plugin-agent-cb:checked")).map(cb => cb.value);
+        const targets = selected.length ? selected : ["all"];
+        btn.disabled = true; btn.textContent = "Installing...";
+        try {
+          const res = await fetch("/api/plugins/install", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ plugin_id: d.id, target_agents: targets })
+          });
+          const out = await res.json();
+          if (out && out.success) {
+            const targetsJoined = (out.installed_targets || targets).join(", ");
+            if (statusBar) statusBar.textContent = `✓ Installed ${d.name} into: ${targetsJoined}`;
+            document.getElementById("plugin-detail-modal")?.classList.remove("open");
+            loadPluginsView();
+          } else {
+            if (statusBar) statusBar.textContent = `⚠ ${(out && out.detail) || "install failed"}`;
+            btn.disabled = false; btn.textContent = "Install into selected agents";
+          }
+        } catch (e) {
+          if (statusBar) statusBar.textContent = `Error: ${e.message}`;
+          btn.disabled = false; btn.textContent = "Install into selected agents";
+        }
+      });
+    }
+  }
+
+  // Support Escape and backdrop click to close the plugin detail modal
+  document.getElementById("plugin-detail-modal")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove("open");
   });
 
   // --------------------------------------------------

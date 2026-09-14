@@ -927,6 +927,10 @@
                   <option value="github">GitHub</option>
                   <option value="smithery">Smithery</option>
                 </select>
+                <label class="plugin-filter-label">Category</label>
+                <select id="plugin-category-select" class="command-field">
+                  <option value="all">All Categories</option>
+                </select>
                 <label class="plugin-filter-label">Sort</label>
                 <select id="plugin-sort-select" class="command-field">
                   <option value="stars">Stars</option>
@@ -946,6 +950,24 @@
             <button class="action-btn plugin-page-btn" id="plugin-prev-page">← Prev</button>
             <span id="plugin-page-info" style="font-size:0.75rem; color:var(--text-muted);"></span>
             <button class="action-btn plugin-page-btn" id="plugin-next-page">Next →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= PLUGIN DETAIL MODAL ================= -->
+      <div class="modal-overlay" id="plugin-detail-modal">
+        <div class="modal-box" style="width: 760px; max-width: 95vw;">
+          <div class="modal-header">
+            <div class="modal-heading" id="plugin-modal-title">Plugin</div>
+            <button type="button" class="modal-close-btn" id="btn-close-plugin-modal" data-modal-close>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div style="overflow-y:auto; padding-right:4px; flex:1;" id="plugin-modal-body">
+            <!-- Populated dynamically -->
           </div>
         </div>
       </div>
