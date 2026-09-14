@@ -36,6 +36,9 @@ import mcp_manager
 import skills_manager
 import memory_hub
 import cron_manager
+import tunnel_manager
+import communicator
+import hermes_hub
 
 app = FastAPI(title="Terminus - The endpoint you can reach anywhere")
 
@@ -1244,10 +1247,128 @@ async def terminal_websocket(websocket: WebSocket, session_id: str):
 
 
 # ---------------------------------------------------------
+# Remote Access & Cloudflare Quick Tunnel
+# ---------------------------------------------------------
+@app.get("/api/tunnel/status")
+async def api_tunnel_status(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return tunnel_manager.tunnel_instance.get_status()
+
+@app.post("/api/tunnel/start")
+async def api_tunnel_start(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    st = tunnel_manager.tunnel_instance.start_tunnel()
+    activity.record_activity("tunnel", "remote_access_started", f"Cloudflare tunnel online: {st.get('public_url')}")
+    return st
+
+@app.post("/api/tunnel/stop")
+async def api_tunnel_stop(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    st = tunnel_manager.tunnel_instance.stop_tunnel()
+    activity.record_activity("tunnel", "remote_access_stopped", "Cloudflare tunnel stopped")
+    return st
+
+
+# ---------------------------------------------------------
+# Omni-Communicator (Universal Broadcast & Inter-Agent Hub)
+# ---------------------------------------------------------
+@app.get("/api/communicator/history")
+async def api_comm_history(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"history": communicator.load_history()}
+
+@app.get("/api/communicator/presets")
+async def api_comm_presets(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"presets": communicator.DEFAULT_PRESETS}
+
+@app.post("/api/communicator/broadcast")
+async def api_comm_broadcast(request: Request, payload: Dict[str, Any] = Body(...)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    msg = payload.get("message", "").strip()
+    target = payload.get("target", "all")
+    session_id = payload.get("session_id")
+    if not msg:
+        raise HTTPException(status_code=400, detail="Empty message")
+
+    targets_dispatched = []
+    if target == "all":
+        for sid, sess in sessions.items():
+            if sess.is_alive:
+                sess.write_input(msg + "\n")
+                targets_dispatched.append(sess.title)
+    elif session_id and session_id in sessions:
+        sessions[session_id].write_input(msg + "\n")
+        targets_dispatched.append(sessions[session_id].title)
+    else:
+        matched = False
+        for sid, sess in sessions.items():
+            if sess.is_alive and (sess.agent_id == target or target in sess.title.lower()):
+                sess.write_input(msg + "\n")
+                targets_dispatched.append(sess.title)
+                matched = True
+                break
+        if not matched:
+            new_sid = f"term-{int(time.time() % 10000)}-{os.urandom(2).hex()}"
+            adapter = adapters.get_agent_adapter(target)
+            title = adapter.get("name", target.title()) if adapter else target.title()
+            launch_cmd = adapter.get("launch_cmd") if adapter else target
+            s = get_or_create_session(new_sid, title=title, agent_id=target, initial_cmd=launch_cmd)
+            def delayed_write():
+                time.sleep(0.5)
+                s.write_input(msg + "\n")
+            threading.Thread(target=delayed_write, daemon=True).start()
+            targets_dispatched.append(title)
+
+    entry = communicator.record_message("User", target, msg)
+    activity.record_activity("communicator", "broadcast_sent", f"Broadcast to {target}: {msg[:40]}...", details=f"Dispatched to: {', '.join(targets_dispatched)}")
+    return {"status": "ok", "dispatched_to": targets_dispatched, "entry": entry}
+
+@app.post("/api/communicator/hermes_direct")
+async def api_comm_hermes_direct(request: Request, payload: Dict[str, Any] = Body(...)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    prompt = payload.get("prompt", "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Empty prompt")
+    res = communicator.execute_solo_hermes(prompt)
+    entry = communicator.record_message("User", "Solo Hermes", prompt, response=res.get("output"))
+    return {"result": res, "entry": entry}
+
+
+# ---------------------------------------------------------
+# Solo Hermes & Model Switcher
+# ---------------------------------------------------------
+@app.get("/api/hermes/status")
+async def api_hermes_status(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return hermes_hub.get_hermes_status()
+
+@app.post("/api/hermes/model")
+async def api_hermes_model(request: Request, payload: Dict[str, Any] = Body(...)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    model_id = payload.get("model_id")
+    if not model_id:
+        raise HTTPException(status_code=400, detail="Missing model_id")
+    res = hermes_hub.set_active_model(model_id)
+    activity.record_activity("hermes", "model_switched", f"Switched Hermes model to: {model_id}")
+    return res
+
+
+# ---------------------------------------------------------
 # Shutdown
 # ---------------------------------------------------------
 @app.on_event("shutdown")
 def shutdown_event():
+    tunnel_manager.tunnel_instance.stop_tunnel()
     for session in list(sessions.values()):
         session.close()
     sessions.clear()

@@ -2422,3 +2422,196 @@ html, body {
   color: var(--text-muted);
 }
 
+/* ========================================================
+   Omni-Communicator & Multi-Agent Broadcast Styling
+   ======================================================== */
+.comm-container-layout {
+  display: grid;
+  grid-template-columns: 460px 1fr;
+  gap: 16px;
+  height: calc(100vh - 160px);
+  min-height: 520px;
+}
+
+@media (max-width: 1024px) {
+  .comm-container-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+}
+
+.comm-control-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.comm-target-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comm-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.comm-preset-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.comm-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.comm-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.comm-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #09090d;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 10px;
+  color: #f4f4f5;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  resize: vertical;
+  min-height: 90px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.comm-textarea:focus {
+  border-color: var(--accent-blue);
+}
+
+.comm-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.comm-stream-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.comm-stream-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comm-msg-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.comm-msg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.comm-msg-content {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.comm-response-box {
+  background: #09090e;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* ========================================================
+   Solo Hermes Model Switcher Grid
+   ======================================================== */
+.hermes-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.hermes-model-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transition: all 0.16s ease;
+}
+.hermes-model-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.035);
+  transform: translateY(-1px);
+}
+.hermes-model-card.active {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.hermes-model-title {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.hermes-model-sub {
+  font-size: 0.70rem;
+  color: var(--text-muted);
+}
+

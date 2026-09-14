@@ -644,6 +644,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ensureKeyboardFocus();
       } else if (viewId === "view-dashboard") {
         loadDashboardView();
+      } else if (viewId === "view-communicator") {
+        loadCommunicatorView();
+      } else if (viewId === "view-hermes") {
+        loadHermesView();
       } else if (viewId === "view-skills") {
         loadSkillsView();
       } else if (viewId === "view-memory") {
@@ -2942,7 +2946,532 @@ document.addEventListener("DOMContentLoaded", () => {
 
     fetch("/api/memory").catch(() => {});
     fetch("/api/cron").catch(() => {});
+    fetchTunnelStatus();
   }
+
+  // --------------------------------------------------
+  // Terminal Themes & Subbar Enhancements
+  // --------------------------------------------------
+  const TERMINAL_THEMES = {
+    midnight: {
+      background: "#09090b",
+      foreground: "#f4f4f6",
+      cursor: "#f4f4f6",
+      cursorAccent: "#09090b",
+      selectionBackground: "rgba(255, 255, 255, 0.18)",
+      black: "#18181b",
+      red: "#ef4444",
+      green: "#10b981",
+      yellow: "#f59e0b",
+      blue: "#3b82f6",
+      magenta: "#a855f7",
+      cyan: "#06b6d4",
+      white: "#f4f4f6",
+      brightBlack: "#52525b",
+      brightRed: "#f87171",
+      brightGreen: "#34d399",
+      brightYellow: "#fbbf24",
+      brightBlue: "#60a5fa",
+      brightMagenta: "#c084fc",
+      brightCyan: "#22d3ee",
+      brightWhite: "#ffffff"
+    },
+    tokyonight: {
+      background: "#1a1b26",
+      foreground: "#c0caf5",
+      cursor: "#c0caf5",
+      cursorAccent: "#1a1b26",
+      selectionBackground: "#33467c",
+      black: "#15161e",
+      red: "#f7768e",
+      green: "#9ece6a",
+      yellow: "#e0af68",
+      blue: "#7aa2f7",
+      magenta: "#bb9af7",
+      cyan: "#7dcfff",
+      white: "#a9b1d6",
+      brightBlack: "#414868",
+      brightRed: "#f7768e",
+      brightGreen: "#9ece6a",
+      brightYellow: "#e0af68",
+      brightBlue: "#7aa2f7",
+      brightMagenta: "#bb9af7",
+      brightCyan: "#7dcfff",
+      brightWhite: "#c0caf5"
+    },
+    catppuccin: {
+      background: "#1e1e2e",
+      foreground: "#cdd6f4",
+      cursor: "#f5e0dc",
+      cursorAccent: "#1e1e2e",
+      selectionBackground: "#585b70",
+      black: "#45475a",
+      red: "#f38ba8",
+      green: "#a6e3a1",
+      yellow: "#f9e2af",
+      blue: "#89b4fa",
+      magenta: "#f5c2e7",
+      cyan: "#94e2d5",
+      white: "#bac2de",
+      brightBlack: "#585b70",
+      brightRed: "#f38ba8",
+      brightGreen: "#a6e3a1",
+      brightYellow: "#f9e2af",
+      brightBlue: "#89b4fa",
+      brightMagenta: "#f5c2e7",
+      brightCyan: "#94e2d5",
+      brightWhite: "#a6adc8"
+    },
+    monokai: {
+      background: "#272822",
+      foreground: "#f8f8f2",
+      cursor: "#f8f8f0",
+      cursorAccent: "#272822",
+      selectionBackground: "#49483e",
+      black: "#272822",
+      red: "#f92672",
+      green: "#a6e22e",
+      yellow: "#f4bf75",
+      blue: "#66d9ef",
+      magenta: "#ae81ff",
+      cyan: "#a1efe4",
+      white: "#f8f8f2",
+      brightBlack: "#75715e",
+      brightRed: "#f92672",
+      brightGreen: "#a6e22e",
+      brightYellow: "#f4bf75",
+      brightBlue: "#66d9ef",
+      brightMagenta: "#ae81ff",
+      brightCyan: "#a1efe4",
+      brightWhite: "#f9f8f5"
+    },
+    cyberpunk: {
+      background: "#08080c",
+      foreground: "#00ffcc",
+      cursor: "#ffe600",
+      cursorAccent: "#08080c",
+      selectionBackground: "rgba(255, 0, 85, 0.35)",
+      black: "#12131a",
+      red: "#ff0055",
+      green: "#00ffcc",
+      yellow: "#ffe600",
+      blue: "#00b8ff",
+      magenta: "#ff00a0",
+      cyan: "#00f0ff",
+      white: "#f0f0f5",
+      brightBlack: "#4b4d61",
+      brightRed: "#ff3377",
+      brightGreen: "#33ffdd",
+      brightYellow: "#ffea33",
+      brightBlue: "#33c6ff",
+      brightMagenta: "#ff33b3",
+      brightCyan: "#33f3ff",
+      brightWhite: "#ffffff"
+    }
+  };
+
+  const themePicker = document.getElementById("term-theme-picker");
+  const savedTheme = localStorage.getItem("terminus_terminal_theme") || "midnight";
+  if (themePicker) {
+    themePicker.value = savedTheme;
+    themePicker.addEventListener("change", () => {
+      const selected = themePicker.value;
+      localStorage.setItem("terminus_terminal_theme", selected);
+      const th = TERMINAL_THEMES[selected] || TERMINAL_THEMES.midnight;
+      terminalTabs.forEach(t => {
+        if (t.term) t.term.options.theme = th;
+      });
+      showToast(`Terminal theme: ${selected}`);
+    });
+  }
+
+  // Clear Terminal
+  document.getElementById("btn-term-clear")?.addEventListener("click", () => {
+    const active = terminalTabs.get(currentSessionId);
+    if (active && active.term) {
+      active.term.clear();
+      showToast("Terminal buffer cleared");
+    }
+  });
+
+  // Download Log
+  document.getElementById("btn-term-download")?.addEventListener("click", async () => {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}/buffer`);
+      if (res.ok) {
+        const data = await res.json();
+        const blob = new Blob([data.buffer || ""], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `terminus-${currentSessionId}.log`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast("Exported terminal session log");
+      }
+    } catch (e) {
+      showToast("Failed to export log");
+    }
+  });
+
+  // --------------------------------------------------
+  // Remote Access & Cloudflare Tunnel Hub
+  // --------------------------------------------------
+  const remoteTunnelModal = document.getElementById("remote-tunnel-modal");
+  const remoteStatusDot = document.getElementById("remote-status-dot");
+  const tunnelModalDot = document.getElementById("tunnel-modal-dot");
+  const tunnelStatusText = document.getElementById("tunnel-status-text");
+  const tunnelUptimeText = document.getElementById("tunnel-uptime-text");
+  const btnToggleTunnel = document.getElementById("btn-toggle-tunnel");
+  const tunnelOnlineSection = document.getElementById("tunnel-online-section");
+  const tunnelPublicUrlInput = document.getElementById("tunnel-public-url-input");
+  const tunnelQrImg = document.getElementById("tunnel-qr-img");
+  let isTunnelOnline = false;
+
+  async function updateTunnelStatus(data) {
+    isTunnelOnline = !!data.is_running;
+    if (remoteStatusDot) {
+      remoteStatusDot.className = `indicator-dot ${isTunnelOnline ? "online" : "offline"}`;
+      remoteStatusDot.style.background = isTunnelOnline ? "var(--accent-emerald)" : "var(--accent-amber)";
+    }
+    if (tunnelModalDot) {
+      tunnelModalDot.className = `indicator-dot ${isTunnelOnline ? "online" : "offline"}`;
+      tunnelModalDot.style.background = isTunnelOnline ? "var(--accent-emerald)" : "var(--accent-rose)";
+    }
+    if (tunnelStatusText) {
+      tunnelStatusText.textContent = isTunnelOnline ? "Tunnel Active & Encrypted" : "Tunnel Offline";
+    }
+    if (tunnelUptimeText) {
+      tunnelUptimeText.textContent = isTunnelOnline 
+        ? `Live public URL active (Uptime: ${data.uptime_seconds || 0}s)`
+        : "Zero-config encrypted Cloudflare HTTPS endpoint";
+    }
+    if (btnToggleTunnel) {
+      btnToggleTunnel.textContent = isTunnelOnline ? "Stop Tunnel" : "Start Tunnel";
+      btnToggleTunnel.className = isTunnelOnline ? "action-btn" : "action-btn btn-primary-action";
+    }
+    if (tunnelOnlineSection) {
+      tunnelOnlineSection.style.display = isTunnelOnline ? "flex" : "none";
+    }
+    if (tunnelPublicUrlInput && data.public_url) {
+      tunnelPublicUrlInput.value = data.public_url;
+    }
+    if (tunnelQrImg && data.qr_code) {
+      tunnelQrImg.src = data.qr_code;
+    }
+  }
+
+  async function fetchTunnelStatus() {
+    try {
+      const res = await fetch("/api/tunnel/status");
+      if (res.ok) {
+        const data = await res.json();
+        updateTunnelStatus(data);
+      }
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-open-remote-tunnel")?.addEventListener("click", () => {
+    remoteTunnelModal?.classList.add("open");
+    fetchTunnelStatus();
+  });
+
+  btnToggleTunnel?.addEventListener("click", async () => {
+    btnToggleTunnel.disabled = true;
+    btnToggleTunnel.textContent = "Connecting...";
+    try {
+      const endpoint = isTunnelOnline ? "/api/tunnel/stop" : "/api/tunnel/start";
+      const res = await fetch(endpoint, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        updateTunnelStatus(data);
+        showToast(isTunnelOnline ? "Cloudflare Tunnel online!" : "Tunnel disconnected");
+      }
+    } catch (e) {
+      showToast("Tunnel request failed: " + e.message);
+    } finally {
+      btnToggleTunnel.disabled = false;
+    }
+  });
+
+  document.getElementById("btn-copy-tunnel-url")?.addEventListener("click", () => {
+    if (tunnelPublicUrlInput?.value) {
+      navigator.clipboard.writeText(tunnelPublicUrlInput.value).then(() => {
+        showToast("Copied public HTTPS URL to clipboard!");
+      });
+    }
+  });
+
+  document.getElementById("btn-copy-lan-url")?.addEventListener("click", () => {
+    navigator.clipboard.writeText("http://10.0.0.171:9120").then(() => {
+      showToast("Copied LAN address to clipboard!");
+    });
+  });
+
+  // --------------------------------------------------
+  // View: Omni-Communicator (Multi-Agent Broadcast)
+  // --------------------------------------------------
+  let activeCommTarget = "all";
+
+  async function loadCommunicatorView() {
+    try {
+      const [histRes, presRes] = await Promise.all([
+        fetch("/api/communicator/history"),
+        fetch("/api/communicator/presets")
+      ]);
+
+      // Render presets
+      if (presRes.ok) {
+        const presData = await presRes.json();
+        const presetGrid = document.getElementById("comm-preset-grid");
+        if (presetGrid) {
+          presetGrid.innerHTML = "";
+          (presData.presets || []).forEach(p => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "comm-preset-btn";
+            btn.innerHTML = `<span>${p.icon}</span> <span>${escapeHtml(p.title)}</span>`;
+            btn.addEventListener("click", () => {
+              const input = document.getElementById("comm-prompt-input");
+              if (input) {
+                input.value = p.prompt;
+                input.focus();
+              }
+            });
+            presetGrid.appendChild(btn);
+          });
+        }
+      }
+
+      // Render History / Stream
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        renderCommHistory(histData.history || []);
+      }
+    } catch (e) {}
+  }
+
+  function renderCommHistory(items) {
+    const list = document.getElementById("comm-stream-list");
+    const countEl = document.getElementById("comm-feed-count");
+    if (countEl) countEl.textContent = `${items.length} Messages`;
+    if (!list) return;
+
+    list.innerHTML = "";
+    if (items.length === 0) {
+      list.innerHTML = `<div style="text-align:center; padding:32px 16px; color:var(--text-muted); font-size:0.8rem;">
+        No broadcast messages dispatched yet. Type a prompt on the left to broadcast to all agents!
+      </div>`;
+      return;
+    }
+
+    items.slice().reverse().forEach(item => {
+      const card = document.createElement("div");
+      card.className = "comm-msg-card";
+      const targetLabel = item.target === "all" ? "📡 ALL ACTIVE" : item.target.toUpperCase();
+      const hasResponse = item.response && item.response.trim();
+
+      card.innerHTML = `
+        <div class="comm-msg-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge-status installed" style="font-size:0.65rem; padding:1px 6px;">${targetLabel}</span>
+            <span style="font-size:0.72rem; color:var(--text-muted);">${item.time_str || ""}</span>
+          </div>
+          <button type="button" class="action-btn" data-relay-msg style="padding:1px 6px; font-size:0.68rem;" title="Copy prompt back into input">Reuse</button>
+        </div>
+        <div class="comm-msg-content">${escapeHtml(item.message)}</div>
+        ${hasResponse ? `
+          <div class="comm-response-box">
+            ${escapeHtml(item.response)}
+          </div>
+        ` : ""}
+      `;
+
+      card.querySelector("[data-relay-msg]")?.addEventListener("click", () => {
+        const input = document.getElementById("comm-prompt-input");
+        if (input) {
+          input.value = item.message;
+          input.focus();
+        }
+      });
+
+      list.appendChild(card);
+    });
+  }
+
+  // Target selection pills
+  document.querySelectorAll("#comm-target-pills .filter-pill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      document.querySelectorAll("#comm-target-pills .filter-pill").forEach(p => p.classList.remove("active"));
+      pill.classList.add("active");
+      activeCommTarget = pill.getAttribute("data-comm-target") || "all";
+    });
+  });
+
+  async function dispatchCommMessage() {
+    const input = document.getElementById("comm-prompt-input");
+    const msg = (input?.value || "").trim();
+    if (!msg) return;
+
+    const btn = document.getElementById("btn-comm-dispatch");
+    if (btn) btn.disabled = true;
+
+    try {
+      if (activeCommTarget === "hermes_direct") {
+        showToast("Querying Solo Hermes...");
+        const res = await fetch("/api/communicator/hermes_direct", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: msg })
+        });
+        if (res.ok) {
+          showToast("Solo Hermes response received!");
+          input.value = "";
+          loadCommunicatorView();
+        }
+      } else {
+        const res = await fetch("/api/communicator/broadcast", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: msg, target: activeCommTarget })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          showToast(`Dispatched to: ${data.dispatched_to.join(", ")}`);
+          input.value = "";
+          loadCommunicatorView();
+        }
+      }
+    } catch (e) {
+      showToast("Dispatch error: " + e.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  document.getElementById("btn-comm-dispatch")?.addEventListener("click", dispatchCommMessage);
+  document.getElementById("comm-prompt-input")?.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      dispatchCommMessage();
+    }
+  });
+
+  document.getElementById("btn-comm-quick-hermes")?.addEventListener("click", async () => {
+    const input = document.getElementById("comm-prompt-input");
+    const prompt = (input?.value || "").trim();
+    if (!prompt) {
+      showToast("Please enter a prompt for Solo Hermes");
+      return;
+    }
+    showToast("Querying Solo Hermes...");
+    try {
+      const res = await fetch("/api/communicator/hermes_direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+      });
+      if (res.ok) {
+        showToast("Solo Hermes replied!");
+        loadCommunicatorView();
+      }
+    } catch (e) {}
+  });
+
+  document.getElementById("btn-clear-comm-history")?.addEventListener("click", () => {
+    fetch("/api/communicator/history", { method: "DELETE" }).catch(() => {});
+    renderCommHistory([]);
+    showToast("Cleared communicator history");
+  });
+
+  // --------------------------------------------------
+  // View: Solo Hermes & Model Control Plane
+  // --------------------------------------------------
+  async function loadHermesView() {
+    try {
+      const res = await fetch("/api/hermes/status");
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const modelEl = document.getElementById("hermes-stat-model");
+      const providerEl = document.getElementById("hermes-stat-provider");
+      const dashEl = document.getElementById("hermes-stat-dashboard");
+      const discordEl = document.getElementById("hermes-stat-discord");
+
+      if (modelEl) modelEl.textContent = data.current_model || "kimi-k2.7-code";
+      if (providerEl) providerEl.textContent = `${(data.provider || "FreeInference").toUpperCase()} Provider`;
+      if (dashEl) dashEl.textContent = data.is_dashboard_running ? "Online (Port 9119)" : "Offline";
+      if (discordEl) discordEl.textContent = data.discord_enabled ? "Enabled (Live)" : "Disabled";
+
+      // Render model switcher cards
+      const grid = document.getElementById("hermes-model-grid");
+      if (grid) {
+        grid.innerHTML = "";
+        (data.available_models || []).forEach(m => {
+          const card = document.createElement("div");
+          const isActive = data.current_model === m.id;
+          card.className = `hermes-model-card ${isActive ? "active" : ""}`;
+          card.innerHTML = `
+            <div>
+              <div class="hermes-model-title">${escapeHtml(m.name)}</div>
+              <div class="hermes-model-sub">${m.context} Context · <span style="color:#f59e0b;">${m.provider}</span></div>
+            </div>
+            <button type="button" class="action-btn ${isActive ? "btn-primary-action" : ""}" style="padding:4px 10px; font-size:0.72rem;">
+              ${isActive ? "Active ✓" : "Select"}
+            </button>
+          `;
+
+          card.querySelector("button")?.addEventListener("click", async () => {
+            showToast(`Switching to ${m.name}...`);
+            try {
+              const switchRes = await fetch("/api/hermes/model", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ model_id: m.id })
+              });
+              if (switchRes.ok) {
+                showToast(`Hermes model switched to: ${m.name}`);
+                loadHermesView();
+              }
+            } catch (e) {
+              showToast("Failed to switch model");
+            }
+          });
+
+          grid.appendChild(card);
+        });
+      }
+    } catch (e) {}
+  }
+
+  document.getElementById("btn-launch-hermes-term")?.addEventListener("click", () => {
+    switchView("view-terminal");
+    createTab("Hermes Agent", "/home/jewboy420/hermes-env/bin/hermes", null, "hermes");
+  });
+
+  document.getElementById("btn-hermes-direct-submit")?.addEventListener("click", async () => {
+    const input = document.getElementById("hermes-direct-input");
+    const output = document.getElementById("hermes-direct-output");
+    const prompt = (input?.value || "").trim();
+    if (!prompt) return;
+
+    if (output) output.textContent = "Querying Solo Hermes with FreeInference...";
+    try {
+      const res = await fetch("/api/communicator/hermes_direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (output) output.textContent = data.result?.output || "No output returned.";
+      }
+    } catch (e) {
+      if (output) output.textContent = "Error: " + e.message;
+    }
+  });
 
   boot();
 });
