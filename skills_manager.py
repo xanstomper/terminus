@@ -185,6 +185,7 @@ def scan_all_skills(force: bool = False) -> List[Dict[str, Any]]:
 
     search_roots = [
         (Path.home() / ".hermes" / "skills", "Hermes"),
+        (Path.home() / ".mochi" / "skills", "Mochi"),
         (Path.home() / ".gemini" / "antigravity-cli" / "builtin" / "skills", "Antigravity"),
         (Path.home() / ".gemini" / "antigravity-cli" / "skills", "Antigravity"),
         (Path.home() / ".gemini" / "skills", "Antigravity"),
