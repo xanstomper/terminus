@@ -113,7 +113,12 @@ def clean_ansi(text: str) -> str:
     ansi_regex = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
     return ansi_regex.sub('', text)
 
-def load_session_history() -> List[Dict[str, Any]]:
+_history_lock = threading.Lock()
+_history_cache: Optional[List[Dict[str, Any]]] = None
+_history_dirty = False
+
+
+def _load_session_history_uncached() -> List[Dict[str, Any]]:
     try:
         if SESSION_HISTORY_FILE.exists():
             with open(SESSION_HISTORY_FILE, "r", encoding="utf-8") as f:
@@ -122,45 +127,79 @@ def load_session_history() -> List[Dict[str, Any]]:
         pass
     return []
 
-def save_session_record(session: "TerminalSession", is_active: bool = True):
+
+def flush_session_history() -> None:
+    """Write the debounced session history snapshot to disk."""
+    global _history_dirty
+    with _history_lock:
+        if not _history_dirty:
+            return
+        snapshot = list(_history_cache or [])
+        _history_dirty = False
     try:
         SESSION_HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
-        history = load_session_history()
-        now = time.time()
-        snippet = session.get_recent_snippet()
-        
-        found = False
-        for rec in history:
-            if rec.get("id") == session.session_id:
-                rec["title"] = session.title
-                rec["agent_id"] = session.agent_id
-                rec["cwd"] = session.cwd
-                rec["last_active"] = session.last_active
-                rec["total_bytes"] = session.total_bytes
-                rec["snippet"] = snippet
-                rec["is_active"] = is_active
-                if not is_active and "closed_at" not in rec:
-                    rec["closed_at"] = now
-                found = True
-                break
-        
-        if not found:
-            history.insert(0, {
-                "id": session.session_id,
-                "title": session.title,
-                "agent_id": session.agent_id,
-                "cwd": session.cwd,
-                "created_at": session.created_at,
-                "last_active": session.last_active,
-                "total_bytes": session.total_bytes,
-                "snippet": snippet,
-                "is_active": is_active,
-                "closed_at": None if is_active else now
-            })
-            
-        history = history[:120]
-        with open(SESSION_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2)
+        tmp = SESSION_HISTORY_FILE.with_suffix(".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(snapshot[:120], f, indent=2)
+        os.replace(tmp, SESSION_HISTORY_FILE)
+    except Exception:
+        pass
+
+
+def load_session_history() -> List[Dict[str, Any]]:
+    """Read-through cached view of the session history file.
+
+    The file is ~185KB of JSON and was previously re-read + re-parsed on every
+    single call, including on every /api/sessions poll.
+    """
+    global _history_cache
+    with _history_lock:
+        if _history_cache is None:
+            _history_cache = _load_session_history_uncached()
+        return list(_history_cache)
+
+
+def save_session_record(session: "TerminalSession", is_active: bool = True):
+    global _history_cache, _history_dirty
+    try:
+        with _history_lock:
+            if _history_cache is None:
+                _history_cache = _load_session_history_uncached()
+            history = _history_cache
+            now = time.time()
+            snippet = session.get_recent_snippet()
+
+            found = False
+            for rec in history:
+                if rec.get("id") == session.session_id:
+                    rec["title"] = session.title
+                    rec["agent_id"] = session.agent_id
+                    rec["cwd"] = session.cwd
+                    rec["last_active"] = session.last_active
+                    rec["total_bytes"] = session.total_bytes
+                    rec["snippet"] = snippet
+                    rec["is_active"] = is_active
+                    if not is_active and "closed_at" not in rec:
+                        rec["closed_at"] = now
+                    found = True
+                    break
+
+            if not found:
+                history.insert(0, {
+                    "id": session.session_id,
+                    "title": session.title,
+                    "agent_id": session.agent_id,
+                    "cwd": session.cwd,
+                    "created_at": session.created_at,
+                    "last_active": session.last_active,
+                    "total_bytes": session.total_bytes,
+                    "snippet": snippet,
+                    "is_active": is_active,
+                    "closed_at": None if is_active else now
+                })
+
+            del history[120:]
+            _history_dirty = True
     except Exception:
         pass
 
@@ -185,18 +224,48 @@ def get_session_buffer(session_id: str) -> str:
     return ""
 
 def mark_session_closed(session_id: str):
+    global _history_cache, _history_dirty
     try:
-        if SESSION_HISTORY_FILE.exists():
-            history = load_session_history()
-            for rec in history:
+        with _history_lock:
+            if _history_cache is None:
+                _history_cache = _load_session_history_uncached()
+            for rec in _history_cache:
                 if rec.get("id") == session_id:
                     rec["is_active"] = False
                     rec["closed_at"] = time.time()
                     break
-            with open(SESSION_HISTORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(history, f, indent=2)
+            _history_dirty = True
     except Exception:
         pass
+
+
+def _startup_warmup():
+    """Background thread: resolve agent versions + seed the agent cache.
+
+    Everything here is expensive (subprocess spawns / full process walk) and must
+    never run on a request path. Runs once at boot, then refreshes hourly.
+    """
+    def _run():
+        try:
+            adapters.refresh_agent_versions()
+            adapters.get_all_agents()
+        except Exception:
+            pass
+
+    threading.Thread(target=_run, daemon=True, name="terminus-agent-warmup").start()
+
+
+def _start_history_flusher():
+    """Flush the debounced session history snapshot every 10 seconds."""
+    def _run():
+        while True:
+            time.sleep(10)
+            try:
+                flush_session_history()
+            except Exception:
+                pass
+
+    threading.Thread(target=_run, daemon=True, name="terminus-history-flush").start()
 
 # ---------------------------------------------------------
 # Robust Persistent PTY Terminal Session
@@ -444,6 +513,53 @@ def get_or_create_session(
 # ---------------------------------------------------------
 # Machine Telemetry & Control Plane Metrics
 # ---------------------------------------------------------
+_GPU_CACHE: Dict[str, Any] = {"value": None, "ts": 0.0}
+_LAN_CACHE: Dict[str, Any] = {"value": None, "ts": 0.0}
+_TELEMETRY_CACHE_TTL = 30.0
+
+
+def _cached_gpu_info() -> str:
+    """nvidia-smi lookup is a subprocess call - cache it for 30s."""
+    now = time.time()
+    if _GPU_CACHE["value"] is not None and (now - _GPU_CACHE["ts"]) < _TELEMETRY_CACHE_TTL:
+        return _GPU_CACHE["value"]
+
+    gpu_info = "Intel UHD Graphics (Alder Lake-N)"
+    try:
+        if shutil.which("nvidia-smi"):
+            nv_out = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"],
+                text=True, timeout=1
+            )
+            parts = nv_out.strip().split(",")
+            if len(parts) >= 3:
+                gpu_info = f"{parts[0].strip()} ({parts[1].strip()}/{parts[2].strip()} MB)"
+    except Exception:
+        pass
+
+    _GPU_CACHE["value"] = gpu_info
+    _GPU_CACHE["ts"] = now
+    return gpu_info
+
+
+def _cached_lan_ip() -> str:
+    """LAN IP is stable - resolve once and reuse."""
+    if _LAN_CACHE["value"]:
+        return _LAN_CACHE["value"]
+
+    lan_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    _LAN_CACHE["value"] = lan_ip
+    return lan_ip
+
+
 def get_machine_telemetry():
     cpu_pct = psutil.cpu_percent(interval=None)
     cpu_cores = psutil.cpu_count(logical=True) or 4
@@ -460,33 +576,20 @@ def get_machine_telemetry():
     os_info = f"{platform.system()} {platform.machine()}"
     kernel = platform.release()
     
-    # GPU detection (Intel UHD or NVIDIA)
-    gpu_info = "Intel UHD Graphics (Alder Lake-N)"
-    try:
-        if shutil.which("nvidia-smi"):
-            nv_out = subprocess.check_output(["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"], text=True, timeout=1)
-            parts = nv_out.strip().split(",")
-            if len(parts) >= 3:
-                gpu_info = f"{parts[0].strip()} ({parts[1].strip()}/{parts[2].strip()} MB)"
-    except Exception:
-        pass
+    # GPU detection (Intel UHD or NVIDIA) - cached, this shells out to nvidia-smi
+    gpu_info = _cached_gpu_info()
     
-    lan_ip = "127.0.0.1"
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        lan_ip = s.getsockname()[0]
-        s.close()
-    except Exception:
-        pass
-
-    # Count running agents and total discovered
+    lan_ip = _cached_lan_ip()
+    
+    # Count running agents from the cached agent snapshot. Never call
+    # adapters.get_all_agents() here: this endpoint is polled every few seconds
+    # and a fresh scan spawns subprocesses / walks every process on the box.
     running_agents = 0
     total_agents = 0
     try:
-        all_agents_list = adapters.get_all_agents()
-        total_agents = len(all_agents_list)
-        for a in all_agents_list:
+        cached = adapters.get_all_agents()
+        total_agents = len(cached)
+        for a in cached:
             if a["running_count"] > 0:
                 running_agents += 1
     except Exception:
@@ -879,13 +982,16 @@ async def api_rename_session(session_id: str, request: Request, payload: Dict[st
         except Exception:
             pass
     else:
-        history = load_session_history()
-        for rec in history:
-            if rec.get("id") == session_id:
-                rec["title"] = new_title
-                with open(SESSION_HISTORY_FILE, "w", encoding="utf-8") as f:
-                    json.dump(history, f, indent=2)
-                break
+        global _history_cache, _history_dirty
+        with _history_lock:
+            if _history_cache is None:
+                _history_cache = _load_session_history_uncached()
+            for rec in _history_cache:
+                if rec.get("id") == session_id:
+                    rec["title"] = new_title
+                    break
+            _history_dirty = True
+        flush_session_history()
     return {"status": "renamed", "success": True, "session_id": session_id, "title": new_title}
 
 
@@ -962,11 +1068,14 @@ async def api_session_buffer(session_id: str, request: Request):
 async def api_delete_session_history(session_id: str, request: Request):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    global _history_cache, _history_dirty
     try:
-        history = load_session_history()
-        history = [h for h in history if h.get("id") != session_id]
-        with open(SESSION_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2)
+        with _history_lock:
+            if _history_cache is None:
+                _history_cache = _load_session_history_uncached()
+            _history_cache = [h for h in _history_cache if h.get("id") != session_id]
+            _history_dirty = True
+        flush_session_history()
         buf_file = BUFFERS_DIR / f"{session_id}.log"
         if buf_file.exists():
             buf_file.unlink()
@@ -1824,8 +1933,20 @@ async def api_plugins_uninstall(request: Request):
 # ---------------------------------------------------------
 # Shutdown
 # ---------------------------------------------------------
+@app.on_event("startup")
+def startup_event():
+    """Kick off expensive warmups on background threads.
+
+    Agent version resolution and the initial process scan spawn subprocesses and
+    walk every process on the box - doing that inline stalls the event loop.
+    """
+    _start_history_flusher()
+    _startup_warmup()
+
+
 @app.on_event("shutdown")
 def shutdown_event():
+    flush_session_history()
     tunnel_manager.tunnel_instance.stop_tunnel()
     for session in list(sessions.values()):
         session.close()

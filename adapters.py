@@ -3,7 +3,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 import psutil
 
 # Ensure user directories are in PATH for discovery and child executions
@@ -71,6 +71,7 @@ AGENT_DEFINITIONS = [
         "id": "mochi",
         "name": "Mochi",
         "binaries": [
+            "/home/jewboy420/.local/bin/mochi",
             "/home/jewboy420/.npm-global/bin/mochi",
             "/home/jewboy420/mochi/dist/mochi-bin",
             "/home/jewboy420/mochi/bin/mochi",
@@ -341,9 +342,21 @@ AGENT_DEFINITIONS = [
     }
 ]
 
+# Agents whose `--version` command boots a full runtime and/or leaves a
+# persistent background daemon behind (cline spawns a ~600MB Node hub daemon).
+# Their version must NEVER be resolved on a request-handling hot path.
+HEAVY_VERSION_AGENTS = {"cline", "roo", "mochi", "hermes", "opencode"}
+
 # Cache detected versions to avoid repeated spawning
+# NOTE: version_cmd for some agents (e.g. cline) boots a full Node runtime and
+# spawns a persistent hub daemon costing ~600MB RSS. NEVER run these from a hot
+# path - only ever populate this cache from a background refresh thread.
 _version_cache: Dict[str, str] = {}
 _cache_ts: float = 0
+VERSION_CACHE_TTL = 3600.0
+_agents_cache: List[Dict[str, Any]] = []
+_agents_cache_ts: float = 0.0
+AGENTS_CACHE_TTL = 30.0
 
 
 def discover_agent_binary(binaries: List[str]) -> Optional[str]:
@@ -357,18 +370,27 @@ def discover_agent_binary(binaries: List[str]) -> Optional[str]:
 
 
 def get_agent_version(agent_id: str, version_cmd: List[str], bin_path: Optional[str] = None) -> str:
-    global _cache_ts
-    if time.time() - _cache_ts > 60:
-        _version_cache.clear()
-        _cache_ts = time.time()
-        
+    """Resolve an agent version string.
+
+    Returns the cached value when one is present and never re-runs the version
+    command for agents whose CLI is known to spawn a persistent background
+    daemon (see HEAVY_VERSION_AGENTS) - those are only ever populated by
+    refresh_agent_versions() on a background thread.
+    """
     if agent_id in _version_cache:
         return _version_cache[agent_id]
-        
+
+    if agent_id in HEAVY_VERSION_AGENTS:
+        return "Installed"
+
     actual_bin = bin_path or discover_agent_binary([version_cmd[0]])
     if not actual_bin:
         return "Not found"
-        
+
+    return _run_version_cmd(agent_id, actual_bin, version_cmd)
+
+
+def _run_version_cmd(agent_id: str, actual_bin: str, version_cmd: List[str]) -> str:
     cmd = [actual_bin] + version_cmd[1:]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=3.5, stdin=subprocess.DEVNULL)
@@ -390,64 +412,99 @@ def get_agent_version(agent_id: str, version_cmd: List[str], bin_path: Optional[
         return "Installed"
 
 
-def get_running_agent_processes() -> Dict[str, List[Dict[str, Any]]]:
-    """Scans system processes to find running instances of all known agents."""
-    running_by_agent: Dict[str, List[Dict[str, Any]]] = {a["id"]: [] for a in AGENT_DEFINITIONS}
-    
+def refresh_agent_versions() -> None:
+    """Populate the version cache on a background thread.
+
+    Expensive: spawns one subprocess per installed agent. Never call this from a
+    request handler.
+    """
+    global _cache_ts
+    from concurrent.futures import ThreadPoolExecutor
+
+    agent_bins = {a["id"]: discover_agent_binary(a["binaries"]) for a in AGENT_DEFINITIONS}
+
+    def fetch(a):
+        bin_path = agent_bins.get(a["id"])
+        if not bin_path:
+            return
+        if a["id"] in _version_cache:
+            return
+        _run_version_cmd(a["id"], bin_path, a["version_cmd"])
+
     try:
-        for p in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_percent', 'create_time', 'username']):
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            list(ex.map(fetch, AGENT_DEFINITIONS))
+        _cache_ts = time.time()
+    except Exception:
+        pass
+
+
+def get_running_agent_processes() -> Dict[str, List[Dict[str, Any]]]:
+    """Scans system processes to find running instances of all known agents.
+
+    Uses a single psutil sweep with pre-lower-cased patterns instead of a
+    nested loop over every process x every agent x every pattern.
+    """
+    running_by_agent: Dict[str, List[Dict[str, Any]]] = {a["id"]: [] for a in AGENT_DEFINITIONS}
+    pattern_index: List[tuple] = []
+    for a in AGENT_DEFINITIONS:
+        for pattern in a["process_patterns"]:
+            pattern_index.append((pattern.lower(), a["id"]))
+
+    now = time.time()
+    try:
+        for p in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_percent', 'create_time']):
             try:
                 cmd = " ".join(p.info.get('cmdline') or []).lower()
                 pname = (p.info.get('name') or "").lower()
-                
-                # Check each agent definition
-                for a in AGENT_DEFINITIONS:
-                    matched = False
-                    for pattern in a["process_patterns"]:
-                        pat = pattern.lower()
-                        if pat in pname or f"/{pat}" in cmd or f" {pat}" in cmd or cmd.startswith(pat):
-                            matched = True
-                            break
-                    
-                    # Avoid false positives (e.g. grep, editors, terminus itself)
-                    if matched and "terminus" not in cmd and "grep" not in cmd and "python3 -c" not in cmd:
-                        running_by_agent[a["id"]].append({
+                if not cmd and not pname:
+                    continue
+                # Avoid false positives (e.g. terminus itself, greps)
+                if "terminus" in cmd or "grep" in cmd:
+                    continue
+
+                seen: Set[str] = set()
+                for pat, agent_id in pattern_index:
+                    if agent_id in seen:
+                        continue
+                    if pat in pname or f"/{pat}" in cmd or f" {pat}" in cmd or cmd.startswith(pat):
+                        seen.add(agent_id)
+                        running_by_agent[agent_id].append({
                             "pid": p.info['pid'],
                             "name": p.info['name'],
-                            "cpu": round(p.info['cpu_percent'] or 0.0, 1),
-                            "mem": round(p.info['memory_percent'] or 0.0, 1),
-                            "uptime_sec": int(time.time() - (p.info['create_time'] or time.time())),
+                            "cpu": round(p.info.get('cpu_percent') or 0.0, 1),
+                            "mem": round(p.info.get('memory_percent') or 0.0, 1),
+                            "uptime_sec": int(now - (p.info.get('create_time') or now)),
                             "cmd": " ".join(p.info.get('cmdline') or [])[:120]
                         })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception:
         pass
-        
+
     return running_by_agent
 
 
 def get_all_agents() -> List[Dict[str, Any]]:
-    """Returns all discovered agents with installation, version, and running status."""
-    from concurrent.futures import ThreadPoolExecutor
+    """Returns all discovered agents with installation, version, and running status.
+
+    Result is cached for AGENTS_CACHE_TTL seconds because this walks every
+    process on the box and is polled by the dashboard several times a minute.
+    """
+    global _agents_cache, _agents_cache_ts
+
+    now = time.time()
+    if _agents_cache and (now - _agents_cache_ts) < AGENTS_CACHE_TTL:
+        return _agents_cache
 
     running_map = get_running_agent_processes()
     agent_bins = {a["id"]: discover_agent_binary(a["binaries"]) for a in AGENT_DEFINITIONS}
-
-    def fetch_ver(a):
-        bin_path = agent_bins[a["id"]]
-        if not bin_path:
-            return a["id"], None
-        return a["id"], get_agent_version(a["id"], a["version_cmd"], bin_path=bin_path)
-
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        ver_results = dict(ex.map(fetch_ver, AGENT_DEFINITIONS))
 
     results = []
     for a in AGENT_DEFINITIONS:
         bin_path = agent_bins[a["id"]]
         installed = bin_path is not None
-        version = ver_results.get(a["id"]) if installed else None
+        version = get_agent_version(a["id"], a["version_cmd"], bin_path=bin_path) if installed else None
         running_procs = running_map.get(a["id"], [])
         
         results.append({
@@ -464,7 +521,9 @@ def get_all_agents() -> List[Dict[str, Any]]:
             "running_count": len(running_procs),
             "processes": running_procs
         })
-        
+
+    _agents_cache = results
+    _agents_cache_ts = now
     return results
 
 

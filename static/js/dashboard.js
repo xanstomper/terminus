@@ -3239,6 +3239,12 @@ document.addEventListener("DOMContentLoaded", () => {
   // Global Telemetry Polling
   // --------------------------------------------------
   async function fetchTelemetry() {
+    // Never poll while the tab is hidden - on mobile this fires constantly and
+    // each poll used to trigger a full agent/process rescan on the server.
+    if (document.hidden) return;
+    // Skip if a previous poll is still in flight so slow responses can't pile up.
+    if (fetchTelemetry._inFlight) return;
+    fetchTelemetry._inFlight = true;
     try {
       const res = await fetch("/api/telemetry");
       if (!res.ok) return;
@@ -3248,7 +3254,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (telemMem) telemMem.textContent = `${data.memory.percent}%`;
       if (telemDisk) telemDisk.textContent = `${data.disk.percent}%`;
       if (hostPillText) hostPillText.textContent = `${data.lan_ip}:${data.port}`;
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      fetchTelemetry._inFlight = false;
+    }
   }
 
   hostPill?.addEventListener("click", () => {
@@ -3289,10 +3298,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     renderTabs();
 
-    // Initialize all active sessions so their PTY instances and sockets are live
-    activeSessions.forEach((s) => {
-      getOrCreateTerminalTab(s.id, s.title, s.cwd, s.agent_id);
-    });
+    // Only bring the CURRENT session back to life. Previously this loop
+    // reconnected every session in the list, and each reconnect re-spawned the
+    // agent process, so reloading the page launched every agent at once in the
+    // background and pegged the CPU.
+    const bootSession = activeSessions.find((s) => s.id === currentSessionId);
+    if (bootSession) {
+      getOrCreateTerminalTab(bootSession.id, bootSession.title, bootSession.cwd, bootSession.agent_id);
+    }
 
     switchTab(currentSessionId);
     setTimeout(() => {
@@ -5226,6 +5239,48 @@ document.addEventListener("DOMContentLoaded", () => {
       grid.appendChild(card);
     });
   }
+
+  // --------------------------------------------------
+  // Mobile Nav Drawer (phone-first)
+  // --------------------------------------------------
+  (function initMobileNav() {
+    const menuBtn = document.getElementById("btn-mobile-menu");
+    const overlay = document.getElementById("mobile-nav-overlay");
+    const closeBtn = document.getElementById("btn-mobile-nav-close");
+    const grid = document.getElementById("mobile-nav-grid");
+    if (!menuBtn || !overlay || !grid) return;
+
+    function buildGrid() {
+      grid.innerHTML = "";
+      document.querySelectorAll("#view-nav .nav-btn").forEach((btn) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "mobile-nav-item" + (btn.classList.contains("active") ? " active" : "");
+        item.textContent = btn.textContent.trim();
+        item.addEventListener("click", () => {
+          btn.click();
+          closeDrawer();
+        });
+        grid.appendChild(item);
+      });
+    }
+
+    function openDrawer() {
+      buildGrid();
+      overlay.classList.add("open");
+      overlay.style.display = "block";
+      requestAnimationFrame(() => overlay.classList.add("open"));
+    }
+
+    function closeDrawer() {
+      overlay.classList.remove("open");
+      setTimeout(() => { if (!overlay.classList.contains("open")) overlay.style.display = ""; }, 220);
+    }
+
+    menuBtn.addEventListener("click", openDrawer);
+    if (closeBtn) closeBtn.addEventListener("click", closeDrawer);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeDrawer(); });
+  })();
 
   boot();
 });
